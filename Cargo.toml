@@ -1,0 +1,19 @@
+[workspace]
+members = ["langchain-openai"]
+resolver = "2"
+
+
+[workspace.dependencies]
+reqwest = "0.12.24"
+serde = "1.0.228"
+serde_json = "1.0.145"
+tokio = "1.48.0"
+anyhow = "1.0.100"
+thiserror = "2.0.17"
+
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
