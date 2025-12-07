@@ -121,19 +121,40 @@ impl RequestBody {
     /// use langchain_openai::request::{RequestBody, ResponseFormat, FormatType};
     /// let req = RequestBody::from_model("gpt-3.5-turbo")
     ///     .with_response_format(ResponseFormat::json_object());
+    ///
+    /// assert_eq!(req.response_format, Some(ResponseFormat::json_object()));
     /// ```
     pub fn with_response_format(mut self, format: ResponseFormat) -> Self {
         self.response_format = Some(format);
         self
     }
 
+    /// 可用于运行时检查冲突参数，确保不会与核心字段冲突。
+    #[expect(unused)]
+    const CORE_FIELDS: &'static [&'static str] = &[
+        "model",
+        "messages",
+        "temperature",
+        "top_p",
+        "stream",
+        "max_tokens",
+    ];
+
     /// 添加额外的参数，当本结构体中没有包含特定的参数时，使用此参数传递额外的参数。
-    ///
+    /// **不要用此方法设置已存在的字段，否则会导致序列化时字段重复，行为未定义。**
     /// # 示例
     /// ```
     /// use langchain_openai::request::RequestBody;
-    /// let req = RequestBody::from_model("gpt-3.5-turbo")
-    ///     .with_extra_param("temperature", 0.7);
+    /// use serde_json::Value;
+    ///
+    /// let req = RequestBody::from_model("gpt-4o")
+    ///     .with_extra_param("xxxxx", 42);
+    ///
+    /// // 序列化为 JSON
+    /// let json_str = serde_json::to_string(&req).unwrap();
+    /// let parsed: Value = serde_json::from_str(&json_str).unwrap();
+    ///
+    /// assert_eq!(parsed.get("xxxxx").and_then(|v| v.as_i64()), Some(42));
     /// ```
     pub fn with_extra_param<T: Into<String>, U: Into<Value>>(mut self, key: T, value: U) -> Self {
         self.extra.insert(key.into(), value.into());
@@ -145,8 +166,17 @@ impl RequestBody {
     /// # 示例
     /// ```
     /// use langchain_openai::request::RequestBody;
+    /// use serde_json::Value;
+    ///
     /// let req = RequestBody::from_model("gpt-3.5-turbo")
     ///     .with_extra_params(vec![("temperature", 0.7), ("top_p", 0.9)]);
+    ///
+    /// // 序列化为 JSON
+    /// let json_str = serde_json::to_string(&req).unwrap();
+    /// let parsed: Value = serde_json::from_str(&json_str).unwrap();
+    ///
+    /// assert_eq!(parsed.get("temperature").and_then(|v| v.as_f64()), Some(0.7));
+    /// assert_eq!(parsed.get("top_p").and_then(|v| v.as_f64()), Some(0.9));
     /// ```
     pub fn with_extra_params<I, K, V>(mut self, params: I) -> Self
     where
@@ -162,7 +192,7 @@ impl RequestBody {
 }
 
 /// 响应格式，用于指定模型响应的格式。
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct ResponseFormat {
     #[serde(rename = "type")]
     format_type: FormatType,
@@ -218,7 +248,7 @@ pub struct StreamOptions {
     pub include_obfuscation: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub enum FormatType {
     #[serde(rename = "json_object")]
     JsonObject,
@@ -231,4 +261,19 @@ pub enum FormatType {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+mod test {
+
+    #[test]
+    fn test_with_extra_param() {
+        use super::*;
+        let req = RequestBody::from_model("gpt-4o").with_extra_param("xxxxx", 42);
+
+        let json_str = serde_json::to_string(&req).unwrap();
+        println!("{}", json_str);
+        let parsed: Value = serde_json::from_str(&json_str).unwrap();
+        println!("{:?}", parsed);
+        assert_eq!(parsed.get("xxxxx").and_then(|v| v.as_i64()), Some(42));
+    }
 }
