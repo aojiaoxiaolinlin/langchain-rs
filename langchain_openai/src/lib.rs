@@ -58,16 +58,10 @@ impl LlmModel for ChatOpenAiModel {
             .json(&body)
             .send()
             .await
-            .map_err(|e| {
-                println!("请求失败: {:?}", e);
-                NodeRunError::LlmRunError("request failed".to_string())
-            })?
+            .map_err(|_| NodeRunError::LlmRunError("request failed".to_string()))?
             .json::<ResponseBody>()
             .await
-            .map_err(|e| {
-                println!("解析回复失败: {:?}", e);
-                NodeRunError::LlmRunError("response parse failed".to_string())
-            })?;
+            .map_err(|e| NodeRunError::LlmRunError(format!("request failed: {:?}", e)))?;
         println!("回复Body:\n{:?}", response);
 
         let message = response
