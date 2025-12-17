@@ -13,26 +13,29 @@ pub mod response;
 pub const CHAT_COMPLETIONS: &str = "/chat/completions";
 
 #[derive(Debug, Clone)]
-pub struct ChatOpenAiModel {
+pub struct ChatOpenAi {
     base_url: String,
     api_key: String,
     model: String,
     tools: Vec<ToolSpec>,
+
+    client: reqwest::Client,
 }
 
-impl ChatOpenAiModel {
-    pub fn new(base_url: String, api_key: String, model: String) -> Self {
+impl ChatOpenAi {
+    pub fn new<T: Into<String>>(base_url: T, api_key: T, model: T) -> Self {
         Self {
-            base_url,
-            api_key,
-            model,
+            base_url: base_url.into(),
+            api_key: api_key.into(),
+            model: model.into(),
             tools: vec![],
+            client: reqwest::Client::new(),
         }
     }
 }
 
 #[async_trait::async_trait]
-impl LlmModel for ChatOpenAiModel {
+impl LlmModel for ChatOpenAi {
     async fn invoke(&self, state: &MessageState) -> Result<MessageDiff, NodeRunError> {
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -50,9 +53,8 @@ impl LlmModel for ChatOpenAiModel {
                 .map_err(|_| NodeRunError::LlmRunError("invalid request body".to_string()))?
         );
 
-        let client = reqwest::Client::new();
-
-        let response = client
+        let response = self
+            .client
             .post(format!("{}{CHAT_COMPLETIONS}", self.base_url))
             .headers(headers)
             .json(&body)
@@ -78,5 +80,31 @@ impl LlmModel for ChatOpenAiModel {
 
     fn bind_tools(&mut self, tools: &[ToolSpec]) {
         self.tools = tools.to_vec();
+    }
+}
+
+pub struct ChatOpenAiBuilder {
+    base_url: String,
+    api_key: String,
+    model: String,
+}
+
+impl ChatOpenAiBuilder {
+    pub fn new<T: Into<String>>(base_url: T, api_key: T, model: T) -> Self {
+        Self {
+            base_url: base_url.into(),
+            api_key: api_key.into(),
+            model: model.into(),
+        }
+    }
+
+    pub fn build(self) -> ChatOpenAi {
+        ChatOpenAi {
+            base_url: self.base_url,
+            api_key: self.api_key,
+            model: self.model,
+            tools: vec![],
+            client: reqwest::Client::new(),
+        }
     }
 }

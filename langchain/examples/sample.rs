@@ -1,6 +1,6 @@
-use langchain::{ReactAgent, Tool, tool, tools_from_fns};
+use langchain::{ReactAgentBuilder, Tool, tool, tools_from_fns};
 use langchain_core::{message::Message, state::MessageState};
-use langchain_openai::ChatOpenAiModel;
+use langchain_openai::ChatOpenAi;
 use langgraph::node::NodeRunError;
 
 const BASE_URL: &str = "https://api.siliconflow.cn/v1";
@@ -9,9 +9,13 @@ const MODEL: &str = "deepseek-ai/DeepSeek-V3.2";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let model = ChatOpenAiModel::new(BASE_URL.to_string(), API_KEY.to_string(), MODEL.to_string());
-    let mut agent =
-        ReactAgent::create_agent_with_tools(model, tools_from_fns!(get_weather, add, sub));
+    let model = ChatOpenAi::new(BASE_URL, API_KEY, MODEL);
+    let mut agent = ReactAgentBuilder::new(model)
+        .with_tools(tools_from_fns!(get_weather, add, sub))
+        .with_system_prompt(
+            "你是一个智能助手，你可以调用工具来完成任务,如果有多个任务它们毫无依赖关系,你可以并行调用多个工具"
+        )
+        .build();
 
     let result = agent
         .invoke(Message::user(

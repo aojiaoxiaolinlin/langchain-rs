@@ -197,6 +197,7 @@ where
 pub struct ReactAgent<M> {
     model: M,
     tools: Vec<DynTool>,
+    system_prompt: Option<String>,
 }
 
 impl<M> ReactAgent<M>
@@ -207,6 +208,7 @@ where
         Self {
             model,
             tools: vec![],
+            system_prompt: None,
         }
     }
 
@@ -219,6 +221,7 @@ where
         Self {
             model,
             tools: tools_vec,
+            system_prompt: None,
         }
     }
 
@@ -239,10 +242,64 @@ where
         self
     }
 
+    pub fn with_system_prompt(mut self, system_prompt: String) -> Self {
+        self.system_prompt = Some(system_prompt);
+        self
+    }
+
     pub async fn invoke(&mut self, message: Message) -> Result<MessageState, GraphRunnerError> {
         let initial = MessageState::new(vec![message]);
         let specs: Vec<ToolSpec> = self.tools.iter().map(|t| t.spec()).collect();
         self.model.bind_tools(&specs);
         run_message_agent(initial, self.model.clone(), self.tools.clone()).await
+    }
+}
+
+pub struct ReactAgentBuilder<M> {
+    model: M,
+    tools: Vec<DynTool>,
+    system_prompt: Option<String>,
+}
+
+impl<M> ReactAgentBuilder<M>
+where
+    M: LlmModel + Clone + Send + Sync + 'static,
+{
+    pub fn new(model: M) -> Self {
+        Self {
+            model,
+            tools: Vec::new(),
+            system_prompt: None,
+        }
+    }
+
+    pub fn with_tools<T, I>(mut self, tools: I) -> Self
+    where
+        T: IntoDynTool,
+        I: IntoIterator<Item = T>,
+    {
+        self.tools = tools.into_iter().map(|t| t.into_dyn_tool()).collect();
+        self
+    }
+
+    pub fn with_tool<T>(mut self, tool: T) -> Self
+    where
+        T: IntoDynTool,
+    {
+        self.tools.push(tool.into_dyn_tool());
+        self
+    }
+
+    pub fn with_system_prompt(mut self, system_prompt: impl Into<String>) -> Self {
+        self.system_prompt = Some(system_prompt.into());
+        self
+    }
+
+    pub fn build(self) -> ReactAgent<M> {
+        ReactAgent {
+            model: self.model,
+            tools: self.tools,
+            system_prompt: self.system_prompt,
+        }
     }
 }

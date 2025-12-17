@@ -171,10 +171,10 @@ impl Message {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
-    id: String,
+    pub id: String,
     #[serde(rename = "type")]
-    type_name: String,
-    function: FunctionCall,
+    pub type_name: String,
+    pub function: FunctionCall,
 }
 
 impl ToolCall {
@@ -197,8 +197,8 @@ impl ToolCall {
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionCall {
-    name: String,
-    arguments: serde_json::Value,
+    pub name: String,
+    pub arguments: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
