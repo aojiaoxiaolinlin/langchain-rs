@@ -125,32 +125,39 @@ impl Node<MessageState> for ToolNode {
     async fn run(&self, state: &MessageState) -> Result<MessageDiff, NodeRunError> {
         if let Some(last_message) = state.messages.last() {
             if let Message::Assistant { tool_calls, .. } = last_message
-                && tool_calls.is_some()
+                && let Some(tool_calls) = tool_calls
             {
-                let tool_calls = tool_calls.as_ref().unwrap();
+                let tool_count = tool_calls.len();
+                tracing::debug!("同时调用 {} 个工具", tool_count);
 
-                let mut futures = Vec::new();
-
-                tracing::info!("工具调用个数: {}", tool_calls.len());
+                let mut futures = Vec::with_capacity(tool_count);
+                let mut tool_invoke_failed = Vec::with_capacity(tool_count);
 
                 for call in tool_calls {
-                    let tool_name = call.function_name().to_string();
+                    let tool_name = call.function_name();
                     let args = call.arguments();
-                    let id = call.id().to_string();
+                    let id = call.id();
 
-                    let tool = match self.tools.get(&tool_name).cloned() {
+                    let tool = match self.tools.get(tool_name) {
                         Some(tool) => tool,
                         None => {
                             let available: Vec<String> = self.tools.keys().cloned().collect();
-                            let error = NodeRunError::ToolRunError(format!(
+                            let err_msg = format!(
                                 "tool '{}' not found. available tools: {}",
                                 tool_name,
                                 available.join(", ")
-                            ));
+                            );
+                            let error = NodeRunError::ToolRunError(err_msg.clone());
                             for middleware in &self.middlewares {
                                 middleware.on_tool_error(state, &tool_name, &error);
                             }
-                            return Err(error);
+                            tracing::error!(
+                                "工具：{} 没找到，可用工具：{}",
+                                tool_name,
+                                available.join(", ")
+                            );
+                            tool_invoke_failed.push(Message::tool(err_msg, id));
+                            continue;
                         }
                     };
 
@@ -158,23 +165,25 @@ impl Node<MessageState> for ToolNode {
                         middleware.before_tool(state, &tool_name);
                     }
 
-                    let state_ref = state;
-                    let middlewares = self.middlewares.clone();
-                    let tool_name_clone = tool_name.clone();
+                    let middlewares = &self.middlewares;
                     let fut = async move {
-                        let result = tool.invoke(state_ref, args).await;
+                        let result = tool.invoke(state, args).await;
                         match result {
                             Ok(content) => {
-                                for middleware in &middlewares {
-                                    middleware.after_tool(state_ref, &tool_name_clone);
+                                for middleware in middlewares {
+                                    middleware.after_tool(state, tool_name);
                                 }
-                                Ok::<Message, NodeRunError>(Message::tool(content.to_string(), id))
+                                Message::tool(content.to_string(), id)
                             }
                             Err(error) => {
-                                for middleware in &middlewares {
-                                    middleware.on_tool_error(state_ref, &tool_name_clone, &error);
+                                for middleware in middlewares {
+                                    middleware.on_tool_error(state, tool_name, &error);
                                 }
-                                Err(error)
+                                tracing::error!("工具：{} 调用失败: {:?}", tool_name, error);
+                                Message::tool(
+                                    format!("tool {:?} error: {:?}", tool_name, error),
+                                    id,
+                                )
                             }
                         }
                     };
@@ -182,13 +191,8 @@ impl Node<MessageState> for ToolNode {
                     futures.push(fut);
                 }
 
-                let results = join_all(futures).await;
-                let mut new_messages = Vec::new();
-
-                for res in results {
-                    let msg = res?;
-                    new_messages.push(msg);
-                }
+                let mut new_messages = join_all(futures).await;
+                new_messages.extend(tool_invoke_failed);
 
                 return Ok(MessageDiff {
                     new_messages,
@@ -198,19 +202,6 @@ impl Node<MessageState> for ToolNode {
         }
 
         Err(NodeRunError::ToolRunError("no tool call".to_string()))
-    }
-}
-
-// TODO: 实现反思节点
-pub struct ReflectNode;
-
-#[async_trait::async_trait]
-impl Node<MessageState> for ReflectNode {
-    async fn run(&self, _: &MessageState) -> Result<MessageDiff, NodeRunError> {
-        Ok(MessageDiff {
-            new_messages: vec![],
-            llm_calls_delta: 0,
-        })
     }
 }
 
@@ -234,7 +225,7 @@ fn route(state: &MessageState) -> InternedGraphLabel {
             return AgentLabel::ToolExecutor.intern();
         } else {
             return BaseAgentLabel::End.intern();
-        };
+        }
     }
     BaseAgentLabel::End.intern()
 }
@@ -252,7 +243,7 @@ where
 
     for tool in tools {
         let spec = tool.spec();
-        let name = spec.function_name().to_string();
+        let name = spec.function_name().to_owned();
         tool_specs.push(spec);
         tool_map.insert(name, tool.clone());
     }
