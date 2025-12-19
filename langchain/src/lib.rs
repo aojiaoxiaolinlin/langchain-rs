@@ -1,4 +1,4 @@
-use futures::{StreamExt, future::join_all, stream, stream::BoxStream};
+use futures::{future::join_all, stream::BoxStream};
 use langchain_core::{
     message::Message,
     request::ToolSpec,
@@ -23,11 +23,10 @@ pub trait LlmModel: Clone + Send + Sync + 'static {
     ) -> Result<MessageDiff, NodeRunError>;
     fn stream(
         &self,
-        state: MessageState,
-        tools: Vec<ToolSpec>,
+        _state: MessageState,
+        _tools: Vec<ToolSpec>,
     ) -> BoxStream<'static, Result<MessageDiff, NodeRunError>> {
-        let this = self.clone();
-        stream::once(async move { this.invoke(&state, &tools).await }).boxed()
+        todo!("这个设计可能不合适");
     }
 }
 

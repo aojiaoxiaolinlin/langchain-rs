@@ -1,5 +1,11 @@
 [workspace]
-members = ["langchain_openai", "langchain_core", "langgraph", "langchain"]
+members = [
+    "langchain_openai",
+    "langchain_core",
+    "langgraph",
+    "langchain",
+    "crates/*",
+]
 resolver = "2"
 
 

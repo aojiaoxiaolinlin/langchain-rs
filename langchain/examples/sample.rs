@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use futures::{StreamExt, pin_mut};
 use langchain::{
     AgentMiddleware, DynAgentMiddleware, ReactAgentBuilder, Tool, tool, tools_from_fns,
 };
