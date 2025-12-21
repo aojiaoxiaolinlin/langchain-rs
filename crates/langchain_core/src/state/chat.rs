@@ -58,4 +58,3 @@ pub trait ChatModel: Send + Sync {
 
     async fn stream(&self, messages: &[Message]) -> Result<ChatStream<Self::Error>, Self::Error>;
 }
-
