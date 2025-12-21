@@ -25,6 +25,10 @@ impl MessagesState {
         self.messages.push(message);
     }
 
+    pub fn extend_messages(&mut self, messages: Vec<Message>) {
+        self.messages.extend(messages);
+    }
+
     pub fn increment_llm_calls(&mut self) {
         self.llm_calls = self.llm_calls.saturating_add(1);
     }
@@ -53,9 +57,8 @@ impl MessagesState {
 
 #[derive(Debug, Clone)]
 pub struct ChatCompletion {
-    pub message: Message,
     pub messages: Vec<Message>,
-    pub usage: Option<Usage>,
+    pub usage: Usage,
 }
 
 pub type ChatStream<E> = Pin<Box<dyn Stream<Item = Result<Message, E>> + Send>>;

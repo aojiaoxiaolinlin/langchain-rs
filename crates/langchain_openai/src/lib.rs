@@ -83,15 +83,13 @@ impl ChatModel for ChatOpenAI {
             .map(|c| c.message.clone())
             .collect::<Vec<_>>();
 
-        let message = messages
-            .get(0)
-            .cloned()
-            .ok_or_else(|| OpenAIError::Other("no choices in response".to_string()))?;
+        if messages.is_empty() {
+            return Err(OpenAIError::Other("no choices in response".to_string()));
+        }
 
         Ok(ChatCompletion {
-            message,
             messages,
-            usage: Some(response.usage),
+            usage: response.usage,
         })
     }
 
