@@ -107,6 +107,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    extern crate self as langchain_core;
     use super::*;
     use langchain_core_macro::tool;
     use schemars::JsonSchema;
