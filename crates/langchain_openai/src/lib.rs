@@ -53,7 +53,7 @@ impl ChatModel for ChatOpenAI {
                 if e.is_timeout() {
                     OpenAIError::Timeout
                 } else {
-                    OpenAIError::HTTP(e)
+                    OpenAIError::Http(e)
                 }
             })?;
 
@@ -68,7 +68,7 @@ impl ChatModel for ChatOpenAI {
             } else if e.is_timeout() {
                 OpenAIError::Timeout
             } else {
-                OpenAIError::HTTP(e)
+                OpenAIError::Http(e)
             }
         })?;
 

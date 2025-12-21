@@ -17,7 +17,7 @@ pub enum OpenAIError {
     Timeout,
     /// 网络错误
     #[error("网络错误")]
-    HTTP(reqwest::Error),
+    Http(reqwest::Error),
     /// 响应体解析错误
     #[error("响应体解析错误")]
     ResponseBodyParse(reqwest::Error),

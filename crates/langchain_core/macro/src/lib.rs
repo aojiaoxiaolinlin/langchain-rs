@@ -31,12 +31,13 @@ impl FromMeta for ArgsMeta {
                     match nm {
                         NestedMeta::Meta(Meta::NameValue(nv)) => {
                             if let Some(ident) = nv.path.get_ident() {
-                                if let Expr::Lit(expr_lit) = &nv.value {
-                                    if let Lit::Str(s) = &expr_lit.lit {
-                                        docs.insert(ident.to_string(), s.value());
-                                        continue;
-                                    }
+                                if let Expr::Lit(expr_lit) = &nv.value
+                                    && let Lit::Str(s) = &expr_lit.lit
+                                {
+                                    docs.insert(ident.to_string(), s.value());
+                                    continue;
                                 }
+
                                 return Err(Error::custom("args values must be string literals")
                                     .with_span(&nv.value));
                             } else {
