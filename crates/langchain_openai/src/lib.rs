@@ -15,6 +15,8 @@ use crate::error::OpenAIError;
 
 mod error;
 
+pub const CHAT_COMPLETIONS: &str = "/chat/completions";
+
 pub struct ChatOpenAI {
     client: reqwest::Client,
     base_url: String,
@@ -44,7 +46,7 @@ impl ChatModel for ChatOpenAI {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         let response = self
             .client
-            .post(&self.base_url)
+            .post(format!("{}{CHAT_COMPLETIONS}", self.base_url))
             .headers(headers)
             .json(&request)
             .send()
@@ -76,6 +78,8 @@ impl ChatModel for ChatOpenAI {
             .json::<ResponseBody>()
             .await
             .map_err(OpenAIError::ResponseBodyParse)?;
+
+        tracing::debug!("OpenAI API response: {:?}", response);
 
         let messages = response
             .choices
@@ -153,6 +157,35 @@ impl ChatOpenAIBuilder {
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             timeout: Some(timeout),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use langchain_core::message::Message;
+
+    #[tokio::test]
+    #[ignore]
+    async fn invoke_with_real_openai() {
+        let model = "deepseek-ai/DeepSeek-V3.2";
+        let base_url = "https://api.siliconflow.cn/v1";
+        let api_key = "";
+
+        let client = ChatOpenAIBuilder::from_base(model, base_url, api_key).build();
+        let messages = vec![Message::user("hello")];
+
+        let result = client.invoke(&messages).await;
+
+        match result {
+            Ok(completion) => {
+                println!("{:?}", completion);
+                assert!(!completion.messages.is_empty());
+            }
+            Err(e) => {
+                panic!("ChatOpenAI invoke failed: {:?}", e);
+            }
         }
     }
 }

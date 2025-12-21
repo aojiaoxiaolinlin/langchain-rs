@@ -9,3 +9,6 @@ thiserror = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

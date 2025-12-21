@@ -649,6 +649,7 @@ dependencies = [
  "langchain_core",
  "reqwest",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
