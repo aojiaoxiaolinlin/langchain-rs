@@ -155,6 +155,7 @@ mod tests {
     enum TestLabel {
         A,
         B,
+        C,
     }
 
     #[derive(Debug)]
@@ -198,6 +199,41 @@ mod tests {
     }
 
     #[test]
+    fn add_node_edges_should_link_all_successors_in_chain() {
+        let mut graph: Graph<i32, i32, NodeError, TestBranch> = Graph {
+            nodes: HashMap::new(),
+        };
+
+        graph.add_node(TestLabel::A, IncNode);
+        graph.add_node(TestLabel::B, IncNode);
+        graph.add_node(TestLabel::C, IncNode);
+
+        graph.add_node_edges((TestLabel::A, TestLabel::B, TestLabel::C));
+
+        let a_label = TestLabel::A.intern();
+        let b_label = TestLabel::B.intern();
+        let c_label = TestLabel::C.intern();
+
+        let a_state = graph.nodes.get(&a_label).unwrap();
+        let b_state = graph.nodes.get(&b_label).unwrap();
+        let c_state = graph.nodes.get(&c_label).unwrap();
+
+        assert_eq!(a_state.edges.len(), 1);
+        assert_eq!(b_state.edges.len(), 1);
+        assert_eq!(c_state.edges.len(), 0);
+
+        match a_state.edges[0] {
+            Edge::NodeEdge(next) => assert_eq!(next, b_label),
+            _ => panic!("expected NodeEdge from A to B"),
+        }
+
+        match b_state.edges[0] {
+            Edge::NodeEdge(next) => assert_eq!(next, c_label),
+            _ => panic!("expected NodeEdge from B to C"),
+        }
+    }
+
+    #[test]
     fn duplicate_edge_returns_error() {
         let mut graph: Graph<i32, i32, NodeError, TestBranch> = Graph {
             nodes: HashMap::new(),
@@ -212,6 +248,21 @@ mod tests {
         let second = graph.try_add_node_edge(TestLabel::A, TestLabel::B);
         let b_label = TestLabel::B.intern();
         assert_eq!(second, Err(GraphError::EdgeAlreadyExists(b_label)));
+    }
+
+    #[test]
+    fn add_node_edges_with_single_node_creates_no_edges() {
+        let mut graph: Graph<i32, i32, NodeError, TestBranch> = Graph {
+            nodes: HashMap::new(),
+        };
+
+        graph.add_node(TestLabel::A, IncNode);
+
+        graph.add_node_edges((TestLabel::A,));
+
+        let a_label = TestLabel::A.intern();
+        let a_state = graph.nodes.get(&a_label).unwrap();
+        assert!(a_state.edges.is_empty());
     }
 
     #[test]
