@@ -1,4 +1,4 @@
-//! #OpenAI 标准实现
+//! # OpenAI 标准实现
 //! 该模块实现了 OpenAI 标准的模型和工具调用，提供了与 OpenAI API 交互的功能。
 
 use std::time::Duration;
