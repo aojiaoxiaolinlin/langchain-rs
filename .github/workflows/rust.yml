@@ -15,11 +15,10 @@ jobs: # 定义要执行的一组 Job
 
     steps: # 这个 Job 中要按顺序执行的一系列步骤
       - uses: actions/checkout@v4 # 第一步：把当前仓库代码检出到 runner 上
-      - uses: actions-rs/toolchain@v1 # 第二步：安装 Rust 工具链
-        with: # 给这个 Action 传参数
-          toolchain: stable # 安装 stable 渠道的 Rust（稳定版）
-          override: true # 把这个工具链设为默认，后续命令直接用
-          components: rustfmt, clippy # 安装 rustfmt 和 clippy 组件，支持 fmt 和 clippy
+      - name: Install Rust toolchain # 第二步：安装 Rust 工具链
+        run: |
+          rustup override set stable
+          rustup component add rustfmt clippy
       - name: Check fmt # 第三步：检查代码是否符合格式化要求
         run: cargo fmt --check --all # 检查所有文件是否格式化正确
 
