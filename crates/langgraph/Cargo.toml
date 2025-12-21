@@ -7,8 +7,13 @@ edition = "2024"
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 downcast-rs = { workspace = true }
+variadics_please = "1.1"
 
 langgraph_macro = { path = "./macro" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
+
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(docsrs_dep)'] }

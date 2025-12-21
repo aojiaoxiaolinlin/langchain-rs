@@ -15,6 +15,7 @@ use std::{
 use crate::intern::{Internable, Interned, Interner};
 
 pub use langgraph_macro::GraphLabel;
+use variadics_please::all_tuples_with_size;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, GraphLabel)]
 pub enum BaseGraphLabel {
@@ -27,6 +28,34 @@ pub enum BaseGraphLabel {
 static GRAPH_LABEL_INTERNER: LazyLock<Interner<dyn GraphLabel>> = LazyLock::new(Interner::new);
 
 pub type InternedGraphLabel = Interned<dyn GraphLabel>;
+
+// const N: 常量泛型，参数化是编译期常量值而不是类型参数
+// const N: constant generic parameter, not a type parameter
+pub trait IntoGraphNodeArray<const N: usize> {
+    fn into_array(self) -> [InternedGraphLabel; N];
+}
+
+macro_rules! impl_render_label_tuples {
+    ($N: expr, $(#[$meta:meta])* $(($T: ident, $I: ident)),*) => {
+        $(#[$meta])*
+        impl<$($T: GraphLabel),*> IntoGraphNodeArray<$N> for ($($T,)*) {
+            #[inline]
+            fn into_array(self) -> [InternedGraphLabel; $N] {
+                let ($($I,)*) = self;
+                [$($I.intern(), )*]
+            }
+        }
+    }
+}
+
+all_tuples_with_size!(
+    #[doc(fake_variadic)]
+    impl_render_label_tuples,
+    1,
+    32,
+    T,
+    l
+);
 
 // DynEq：为 trait 对象提供基于运行时类型的相等比较接口
 // DynEq: trait providing runtime type-based equality for trait objects

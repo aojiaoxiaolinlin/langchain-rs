@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::{
     edge::{BranchKind, Edge, EdgeCondition},
-    label::{GraphLabel, InternedGraphLabel},
+    label::{GraphLabel, InternedGraphLabel, IntoGraphNodeArray},
     node::{Node, NodeState},
 };
 
@@ -103,6 +103,15 @@ impl<I, O, E, B: BranchKind> Graph<I, O, E, B> {
     /// 添加一个边到图中，保证 `pred_node` 是 `next_node` 的前继
     pub fn add_node_edge(&mut self, pred_node: impl GraphLabel, next_node: impl GraphLabel) {
         self.try_add_node_edge(pred_node, next_node).unwrap();
+    }
+
+    pub fn add_node_edges<const N: usize>(&mut self, edges: impl IntoGraphNodeArray<N>) {
+        for window in edges.into_array().windows(2) {
+            let [pred_node, next_node] = window else {
+                break;
+            };
+            self.add_node_edge(*pred_node, *next_node);
+        }
     }
 
     pub fn add_node_condition_edge<F>(
