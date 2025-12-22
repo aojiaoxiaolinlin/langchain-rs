@@ -4,6 +4,7 @@ use std::pin::Pin;
 
 use crate::{
     message::{Message, ToolCall},
+    request::ToolSpec,
     response::Usage,
 };
 
@@ -67,7 +68,11 @@ pub type ChatStream<E> = Pin<Box<dyn Stream<Item = Result<Message, E>> + Send>>;
 pub trait ChatModel: Send + Sync {
     type Error: Send + Sync + 'static;
 
-    async fn invoke(&self, messages: &[Message]) -> Result<ChatCompletion, Self::Error>;
+    async fn invoke(
+        &self,
+        messages: &[Message],
+        tools: &[ToolSpec],
+    ) -> Result<ChatCompletion, Self::Error>;
 
     async fn stream(&self, messages: &[Message]) -> Result<ChatStream<Self::Error>, Self::Error>;
 }

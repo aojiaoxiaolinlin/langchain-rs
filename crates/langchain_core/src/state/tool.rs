@@ -34,6 +34,26 @@ impl<E> RegisteredTool<E> {
             function: self.function.clone(),
         }
     }
+
+    pub fn name(&self) -> &str {
+        &self.function.name
+    }
+
+    pub fn map_err<E2, F>(self, f: F) -> RegisteredTool<E2>
+    where
+        E: Send + Sync + 'static,
+        E2: Send + Sync + 'static,
+        F: Fn(E) -> E2 + Send + Sync + 'static,
+    {
+        let RegisteredTool { function, handler } = self;
+        let f = Arc::new(f);
+        let handler: Box<ToolFn<E2>> = Box::new(move |value: Value| {
+            let fut = (handler)(value);
+            let f = f.clone();
+            Box::pin(async move { fut.await.map_err(|e| (f)(e)) })
+        });
+        RegisteredTool { function, handler }
+    }
 }
 
 #[macro_export]

@@ -10,9 +10,12 @@ langgraph_macro = { path = "../langgraph/macro" }
 langchain_core = { path = "../langchain_core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 futures = "0.3"
+tracing = "0.1"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
-langchain_core_macro = { path = "../langchain_core/macro" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = { workspace = true }
 schemars = { workspace = true }
+langchain_openai = { path = "../langchain_openai" }

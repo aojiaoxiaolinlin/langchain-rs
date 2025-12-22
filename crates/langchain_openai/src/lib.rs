@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use langchain_core::{
     message::Message,
-    request::RequestBody,
+    request::{RequestBody, ToolSpec},
     response::ResponseBody,
     state::{ChatCompletion, ChatModel, ChatStream},
 };
@@ -34,8 +34,14 @@ pub struct ChatOpenAI {
 impl ChatModel for ChatOpenAI {
     type Error = OpenAIError;
 
-    async fn invoke(&self, messages: &[Message]) -> Result<ChatCompletion, Self::Error> {
-        let request = RequestBody::from_model(&self.model).with_messages(messages.to_vec());
+    async fn invoke(
+        &self,
+        messages: &[Message],
+        tools: &[ToolSpec],
+    ) -> Result<ChatCompletion, Self::Error> {
+        let request = RequestBody::from_model(&self.model)
+            .with_messages(messages.to_vec())
+            .with_tools(tools.to_vec());
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -176,7 +182,7 @@ mod tests {
         let client = ChatOpenAIBuilder::from_base(model, base_url, api_key).build();
         let messages = vec![Message::user("hello")];
 
-        let result = client.invoke(&messages).await;
+        let result = client.invoke(&messages, &[]).await;
 
         match result {
             Ok(completion) => {
