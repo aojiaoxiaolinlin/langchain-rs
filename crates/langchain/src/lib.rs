@@ -153,11 +153,10 @@ pub struct ReactAgent {
 }
 
 impl ReactAgent {
-    pub fn create_agent<M, ETool>(model: M, tools: Vec<RegisteredTool<ETool>>) -> Self
+    pub fn create_agent<M>(model: M, tools: Vec<RegisteredTool<ToolError>>) -> Self
     where
         M: ChatModel + Send + Sync + 'static,
         M::Error: Error + Send + Sync + 'static,
-        ETool: Error + Send + Sync + 'static,
     {
         let (tool_specs, tools) = parse_tool(tools);
 
