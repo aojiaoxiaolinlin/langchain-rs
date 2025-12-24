@@ -247,7 +247,7 @@ impl<I, O, E, B: BranchKind, Ev: std::fmt::Debug> Graph<I, O, E, B, Ev> {
                     next_nodes: branches,
                     condition,
                 } => {
-                    let branches_to_take = (condition)(&output);
+                    let branches_to_take = (condition)(output);
                     for branch in branches_to_take {
                         if let Some(label) = branches.get(&branch) {
                             next_nodes.push(*label);
