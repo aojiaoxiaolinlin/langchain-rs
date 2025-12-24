@@ -19,33 +19,6 @@ pub trait EventSink<Ev>: Send {
     async fn emit(&mut self, event: Ev);
 }
 
-/// 节点执行结果
-///
-/// # 类型参数
-///
-/// * `O` - 节点输出类型
-/// * `Ev` - 事件类型
-pub enum NodeResult<'a, O, Ev> {
-    /// 同步调用时的输出。同步调用下和 非流式调用节点类型。
-    Sync { output: O },
-    /// 事件流Stream 模式下有类型
-    Stream { events: EventStream<'a, Ev> },
-}
-
-impl<'a, O, Ev> NodeResult<'a, O, Ev> {
-    /// 创建同步结果（无事件流）
-    pub fn sync(output: O) -> Self {
-        Self::Sync { output }
-    }
-
-    /// 创建流式结果
-    pub fn stream(events: impl Stream<Item = Ev> + Send + 'a) -> Self {
-        Self::Stream {
-            events: EventStream::new(events),
-        }
-    }
-}
-
 /// 事件流类型
 pub struct EventStream<'a, Ev> {
     inner: Pin<Box<dyn Stream<Item = Ev> + Send + 'a>>,
