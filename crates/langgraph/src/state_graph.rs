@@ -106,7 +106,7 @@ where
         Ok((state, current))
     }
 
-    pub fn stream(
+    pub fn into_stream(
         self,
         mut state: S,
         max_steps: usize,
@@ -116,6 +116,90 @@ where
 
         let mut current = self.entry;
         let graph = self.graph;
+
+        let stream = async_stream::stream! {
+            for _ in 0..max_steps {
+                let mut node_stream = match graph.run_stream(current, &state).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::error!("Error in node stream: {:?}", e);
+                        break;
+                    }
+                };
+
+                let mut next = Vec::new();
+                let mut output_state = None;
+
+                while let Some(event_result) = node_stream.next().await {
+                    match event_result {
+                        Ok(event) => match event {
+                            GraphEvent::NodeEnd {
+                                output, next_nodes, ..
+                            } => {
+                                output_state = Some(output);
+                                next = next_nodes;
+                                break;
+                            }
+                            GraphEvent::Streaming { event, .. } => {
+                                tracing::debug!("Streaming event: {:?}", event);
+                                yield event;
+                            }
+                            _ => {}
+                        },
+                        Err(e) => {
+                            tracing::error!("Error in node execution: {:?}", e);
+                            break;
+                        }
+                    }
+                }
+                drop(node_stream);
+
+                if let Some(s) = output_state {
+                    state = s;
+                }
+
+                match next.len() {
+                    0 => {
+                        tracing::debug!("No next nodes, graph completed");
+                        break;
+                    }
+                    1 => {
+                        current = next[0];
+                    }
+                    _ => {
+                        match strategy {
+                            RunStrategy::StopAtNonLinear => {
+                                tracing::debug!("Non-linear branch, stopping");
+                                break;
+                            }
+                            RunStrategy::PickFirst => {
+                                current = next[0];
+                            }
+                            RunStrategy::PickLast => {
+                                current = next[next.len() - 1];
+                            }
+                            RunStrategy::Parallel => {
+                                current = next[0];
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        EventStream::new(stream)
+    }
+
+    pub fn stream<'a>(
+        &'a self,
+        mut state: S,
+        max_steps: usize,
+        strategy: RunStrategy,
+    ) -> EventStream<'a, Ev> {
+        use futures::StreamExt;
+
+        let mut current = self.entry;
+        let graph = &self.graph;
 
         let stream = async_stream::stream! {
             for _ in 0..max_steps {

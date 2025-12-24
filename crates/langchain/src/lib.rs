@@ -331,9 +331,9 @@ impl ReactAgent {
     }
 
     pub async fn stream(
-        self,
+        &self,
         message: Message,
-    ) -> Result<impl Stream<Item = ChatStreamEvent>, ReActAgentError> {
+    ) -> Result<impl Stream<Item = ChatStreamEvent> + '_, ReActAgentError> {
         let mut state = MessagesState::default();
         if let Some(system_prompt) = &self.system_prompt {
             state.push_message(Message::system(system_prompt.clone()));
