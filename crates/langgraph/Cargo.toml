@@ -14,6 +14,9 @@ tracing = { workspace = true }
 langgraph_macro = { path = "./macro" }
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
 smallvec = "1.15.1"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+anyhow.workspace = true
 
 
 [lints]

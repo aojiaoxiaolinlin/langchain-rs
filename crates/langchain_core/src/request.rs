@@ -107,9 +107,10 @@ impl RequestBody {
     ///
     /// # 示例
     /// ```
+    /// use std::sync::Arc;
     /// use langchain_core::{request::RequestBody, message::Message};
     /// let req = RequestBody::from_model("gpt-3.5-turbo")
-    ///     .with_messages(vec![Message::user("你好")]);
+    ///     .with_messages(vec![Arc::new(Message::user("你好"))]);
     /// ```
     pub fn with_messages(mut self, messages: Vec<Arc<Message>>) -> Self {
         self.messages.extend(messages);
