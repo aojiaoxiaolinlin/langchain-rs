@@ -368,8 +368,8 @@ impl ReactAgent {
         }
     }
 
-    pub fn with_system_prompt(mut self, system_prompt: String) -> Self {
-        self.system_prompt = Some(system_prompt);
+    pub fn with_system_prompt<T: Into<String>>(mut self, system_prompt: T) -> Self {
+        self.system_prompt = Some(system_prompt.into());
         self
     }
 

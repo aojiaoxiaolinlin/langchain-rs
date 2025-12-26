@@ -119,7 +119,11 @@ pub enum ChatStreamEvent {
 pub type ChatStream<E> = Pin<Box<dyn Stream<Item = Result<ChatStreamEvent, E>> + Send>>;
 
 /// 标准的 ChatStream，使用 Box<dyn Error>
-pub type StandardChatStream = Pin<Box<dyn Stream<Item = Result<ChatStreamEvent, Box<dyn std::error::Error + Send + Sync>>> + Send>>;
+pub type StandardChatStream = Pin<
+    Box<
+        dyn Stream<Item = Result<ChatStreamEvent, Box<dyn std::error::Error + Send + Sync>>> + Send,
+    >,
+>;
 
 #[async_trait]
 pub trait ChatModel: Send + Sync {

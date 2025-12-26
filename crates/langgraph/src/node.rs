@@ -6,10 +6,7 @@ use downcast_rs::{Downcast, impl_downcast};
 use futures::Stream;
 use thiserror::Error;
 
-use crate::{
-    edge::Edge,
-    label::InternedGraphLabel,
-};
+use crate::{edge::Edge, label::InternedGraphLabel};
 
 #[derive(Debug, Error)]
 pub enum NodeError {}

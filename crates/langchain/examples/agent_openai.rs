@@ -33,7 +33,7 @@ async fn main() {
 
     let agent = ReactAgent::create_agent(model, vec![add_tool(), subtract_tool()])
         .with_system_prompt(
-            "你是一个智能助手，你可以使用提供的工具来回答用户的问题。如果问题之间没有依赖关系，你可以并行执行多个工具。".to_string(),
+            "你是一个智能助手，你可以使用提供的工具来回答用户的问题。如果问题之间没有依赖关系，你可以并行执行多个工具。",
         );
 
     let state = agent
