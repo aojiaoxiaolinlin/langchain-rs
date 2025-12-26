@@ -648,14 +648,14 @@ mod tests {
         #[async_trait]
         impl Node<Vec<String>, String, NodeError, ()> for NameNode {
             async fn run_sync(&self, _: &Vec<String>) -> Result<String, NodeError> {
-                Ok(self.0.to_string())
+                Ok(self.0.to_owned())
             }
             async fn run_stream(
                 &self,
                 _: &Vec<String>,
                 _: &mut dyn EventSink<()>,
             ) -> Result<String, NodeError> {
-                Ok(self.0.to_string())
+                Ok(self.0.to_owned())
             }
         }
 
