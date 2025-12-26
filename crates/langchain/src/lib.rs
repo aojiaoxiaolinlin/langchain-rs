@@ -1,7 +1,7 @@
 use std::{collections::HashMap, error::Error, marker::PhantomData, mem};
 
 use async_trait::async_trait;
-use futures::{Stream, StreamExt, future::try_join_all};
+use futures::{Stream, StreamExt, future::join_all};
 use langchain_core::{
     message::{FunctionCall, Message, ToolCall},
     request::ToolSpec,
@@ -19,7 +19,6 @@ use langgraph::{
     node::{EventSink, Node},
     state_graph::StateGraph,
 };
-use serde_json::Value;
 use thiserror::Error;
 
 pub struct LlmNode<M>
@@ -248,12 +247,20 @@ where
                     futures.push((handler)(call.arguments()));
                 }
             }
-            let results: Vec<Value> = try_join_all(futures)
-                .await
-                .map_err(|e| AgentError::Tool(Box::new(e)))?;
-            for (id, value) in ids.into_iter().zip(results.into_iter()) {
-                tracing::debug!("Tool call result: {}", value);
-                delta.push_message_owned(Message::tool(value.to_string(), id));
+            let results = join_all(futures).await;
+            for (id, result) in ids.into_iter().zip(results.into_iter()) {
+                let content = match result {
+                    Ok(value) => {
+                        tracing::debug!("Tool call result: {}", value);
+                        value.to_string()
+                    }
+                    Err(e) => {
+                        // 错误信息也返回给LLM、让它决定是否重试
+                        tracing::error!("Tool call failed: {}", e);
+                        format!("Error: {}", e)
+                    }
+                };
+                delta.push_message_owned(Message::tool(content, id));
             }
         }
         Ok(delta)
@@ -431,6 +438,8 @@ mod tests {
     enum TestError {
         #[error(transparent)]
         Json(#[from] serde_json::Error),
+        #[error("custom error")]
+        Custom,
     }
 
     #[derive(Debug)]
@@ -502,6 +511,11 @@ mod tests {
         Ok("tool_result".to_owned())
     }
 
+    #[tool(description = "fail tool")]
+    async fn fail_tool() -> Result<String, TestError> {
+        Err(TestError::Custom)
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq, Hash, GraphLabel)]
     enum TestLabel {
         Llm,
@@ -557,6 +571,43 @@ mod tests {
         match final_state.messages[2].as_ref() {
             Message::Tool { .. } => {}
             _ => panic!("third message must be tool"),
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_node_captures_error() {
+        let tool = fail_tool_tool();
+        let (_, tools) = parse_tool(vec![tool]);
+        let tool_node = ToolNode::new(tools);
+
+        // Construct input state with a tool call
+        let mut input = MessagesState::default();
+        let call = ToolCall {
+            id: "call1".to_owned(),
+            type_name: "function".to_owned(),
+            function: FunctionCall {
+                name: "fail_tool".to_owned(),
+                arguments: serde_json::json!({}),
+            },
+        };
+        input.push_message_owned(Message::Assistant {
+            content: "".to_owned(),
+            tool_calls: Some(vec![call]),
+            name: None,
+        });
+
+        // Run tool node
+        let result = tool_node.run_sync(&input).await;
+
+        assert!(result.is_ok());
+        let delta = result.unwrap();
+        assert_eq!(delta.messages.len(), 1);
+
+        match delta.messages[0].as_ref() {
+            Message::Tool { content, .. } => {
+                assert!(content.contains("custom error"));
+            }
+            _ => panic!("expected tool message"),
         }
     }
 }
