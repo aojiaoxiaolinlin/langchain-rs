@@ -4,6 +4,7 @@ use crate::{
     label::{GraphLabel, InternedGraphLabel},
     node::{EventStream, Node},
 };
+use futures::future::join_all;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
@@ -116,7 +117,48 @@ where
                     RunStrategy::StopAtNonLinear => return Ok((state, current)),
                     RunStrategy::PickFirst => current = next[0],
                     RunStrategy::PickLast => current = next[next.len() - 1],
-                    RunStrategy::Parallel => {}
+                    RunStrategy::Parallel => {
+                        // Parallel execution logic
+                        let next_nodes = next;
+                        let mut futures = Vec::new();
+
+                        // Execute all branches in parallel
+                        for &node in &next_nodes {
+                            futures.push(self.graph.run_once(node, &state));
+                        }
+
+                        let results = join_all(futures).await;
+
+                        // Collect updates and determine next nodes
+                        let mut all_next_nodes = Vec::new();
+                        for result in results {
+                            let (update, next) = result?;
+                            state = (self.reducer)(state, update);
+                            all_next_nodes.extend(next);
+                        }
+
+                        // For simplicity, if multiple branches converge or produce multiple next nodes,
+                        // we need a strategy to handle the next step.
+                        // Here we just take the first one if available to continue the loop.
+                        // In a real graph execution engine, this would need a more complex scheduler.
+                        if all_next_nodes.is_empty() {
+                            return Ok((state, current));
+                        }
+
+                        // Unique next nodes to avoid redundant execution if branches converge
+                        all_next_nodes.sort_unstable();
+                        all_next_nodes.dedup();
+
+                        if all_next_nodes.is_empty() {
+                            return Ok((state, current));
+                        }
+
+                        // If we still have multiple next nodes after parallel execution,
+                        // we continue with the first one for now as the loop structure assumes single current pointer.
+                        // Ideally StateGraph should support maintaining a set of current nodes.
+                        // TODO: 以后有必要再实现维护多个当前节点的功能
+                        current = all_next_nodes[0];
+                    }
                 },
             }
         }
@@ -489,5 +531,38 @@ mod tests {
         sg.add_node(TestLabel::A, StringNode);
         let (final_state, _) = sg.run(0, 1, RunStrategy::PickFirst).await.unwrap();
         assert_eq!(final_state, 1);
+    }
+
+    #[tokio::test]
+    async fn state_graph_run_strategy_parallel() {
+        let mut sg: StateGraph<i32, i32, NodeError, ()> =
+            StateGraph::new(TestLabel::A, |state, update| state + update);
+
+        sg.add_node(TestLabel::A, AddOne);
+        sg.add_node(TestLabel::B, AddOne);
+        sg.add_node(TestLabel::C, AddOne);
+
+        // A -> B
+        // A -> C
+        sg.add_edge(TestLabel::A, TestLabel::B);
+        sg.add_edge(TestLabel::A, TestLabel::C);
+
+        // A(0) -> updates +1 -> state 1
+        // Branches B and C run in parallel with state 1
+        // B(1) -> updates +1
+        // C(1) -> updates +1
+        // Total state: 1 (from A) + 1 (from B) + 1 (from C) = 3
+        // BUT:
+        // reducer is state + update.
+        // Step 1: A runs. input 0. returns 1. reducer(0, 1) -> 1.
+        // Step 2: B and C run in parallel with input 1.
+        // B returns 2. C returns 2.
+        // Parallel strategy applies reducer sequentially for updates.
+        // reducer(1, 2) -> 3.
+        // reducer(3, 2) -> 5.
+
+        let (final_state, _) = sg.run(0, 10, RunStrategy::Parallel).await.unwrap();
+
+        assert_eq!(final_state, 5);
     }
 }

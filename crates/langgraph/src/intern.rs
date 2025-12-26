@@ -64,6 +64,22 @@ impl<T: ?Sized + Debug> Debug for Interned<T> {
     }
 }
 
+// Implement Ord for Interned<T> based on pointer address
+// This is required for sorting/deduping collections of Interned<T>
+impl<T: ?Sized + Internable> PartialOrd for Interned<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T: ?Sized + Internable> Ord for Interned<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.0 as *const T)
+            .cast::<()>()
+            .cmp(&(other.0 as *const T).cast::<()>())
+    }
+}
+
 // 从 &Interned<T> 创建 Interned<T>：按值复制内部静态引用
 // Implement From<&Interned<T>> for Interned<T> to copy the inner reference
 impl<T> From<&Interned<T>> for Interned<T> {
