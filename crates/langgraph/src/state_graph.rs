@@ -100,70 +100,65 @@ where
         mut state: S,
         max_steps: usize,
         strategy: RunStrategy,
-    ) -> Result<(S, InternedGraphLabel), GraphError<E>> {
-        let mut current = self.entry;
+    ) -> Result<(S, Vec<InternedGraphLabel>), GraphError<E>> {
+        let mut current_nodes = vec![self.entry];
 
         for _ in 0..max_steps {
-            // 运行节点，得到 update
-            let (update, next) = self.graph.run_once(current, &state).await?;
+            // 如果当前没有活跃节点，图执行结束
+            if current_nodes.is_empty() {
+                return Ok((state, current_nodes));
+            }
 
-            // 使用 reducer 合并状态
-            state = (self.reducer)(state, update);
+            // 1. 并行执行当前步骤的所有活跃节点
+            // 这是一个 "Super-step"：所有节点并行运行，然后统一同步
+            let futures = current_nodes
+                .iter()
+                .map(|&node| self.graph.run_once(node, &state));
 
-            match next.len() {
-                0 => return Ok((state, current)),
-                1 => current = next[0],
-                _ => match strategy {
-                    RunStrategy::StopAtNonLinear => return Ok((state, current)),
-                    RunStrategy::PickFirst => current = next[0],
-                    RunStrategy::PickLast => current = next[next.len() - 1],
-                    RunStrategy::Parallel => {
-                        // Parallel execution logic
-                        let next_nodes = next;
-                        let mut futures = Vec::new();
+            let results = join_all(futures).await;
 
-                        // Execute all branches in parallel
-                        for &node in &next_nodes {
-                            futures.push(self.graph.run_once(node, &state));
-                        }
+            // 2. 收集结果并应用 Reducer
+            // 注意：虽然执行是并行的，但 Reducer 的应用是顺序的（按节点顺序）
+            // 这保证了确定性。如果用户需要特定的合并逻辑，应该在 reducer 内部处理。
+            let mut all_next_nodes = Vec::new();
 
-                        let results = join_all(futures).await;
+            for result in results {
+                let (update, next) = result?;
+                // Apply reducer: S' = reducer(S, U)
+                state = (self.reducer)(state, update);
+                all_next_nodes.extend(next);
+            }
 
-                        // Collect updates and determine next nodes
-                        let mut all_next_nodes = Vec::new();
-                        for result in results {
-                            let (update, next) = result?;
-                            state = (self.reducer)(state, update);
-                            all_next_nodes.extend(next);
-                        }
+            // 3. 决定下一轮的活跃节点
+            if all_next_nodes.is_empty() {
+                return Ok((state, current_nodes));
+            }
 
-                        // For simplicity, if multiple branches converge or produce multiple next nodes,
-                        // we need a strategy to handle the next step.
-                        // Here we just take the first one if available to continue the loop.
-                        // In a real graph execution engine, this would need a more complex scheduler.
-                        if all_next_nodes.is_empty() {
-                            return Ok((state, current));
-                        }
+            // 去重，防止同一节点被多次触发
+            all_next_nodes.sort_unstable();
+            all_next_nodes.dedup();
 
-                        // Unique next nodes to avoid redundant execution if branches converge
-                        all_next_nodes.sort_unstable();
-                        all_next_nodes.dedup();
-
-                        if all_next_nodes.is_empty() {
-                            return Ok((state, current));
-                        }
-
-                        // If we still have multiple next nodes after parallel execution,
-                        // we continue with the first one for now as the loop structure assumes single current pointer.
-                        // Ideally StateGraph should support maintaining a set of current nodes.
-                        // TODO: 以后有必要再实现维护多个当前节点的功能
-                        current = all_next_nodes[0];
+            match strategy {
+                RunStrategy::StopAtNonLinear => {
+                    if all_next_nodes.len() > 1 {
+                        return Ok((state, current_nodes));
                     }
-                },
+                    current_nodes = all_next_nodes;
+                }
+                RunStrategy::PickFirst => {
+                    current_nodes = vec![all_next_nodes[0]];
+                }
+                RunStrategy::PickLast => {
+                    current_nodes = vec![all_next_nodes[all_next_nodes.len() - 1]];
+                }
+                RunStrategy::Parallel => {
+                    // 在 Parallel 模式下，保留所有分支作为下一轮的活跃节点
+                    current_nodes = all_next_nodes;
+                }
             }
         }
 
-        Ok((state, current))
+        Ok((state, current_nodes))
     }
 
     pub fn stream<'a>(
@@ -174,76 +169,90 @@ where
     ) -> EventStream<'a, Ev> {
         use futures::StreamExt;
 
-        let mut current = self.entry;
+        let mut current_nodes = vec![self.entry];
         let graph = &self.graph;
         let reducer = &self.reducer;
 
         let stream = async_stream::stream! {
             for _ in 0..max_steps {
-                let mut node_stream = match graph.run_stream(current, &state).await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::error!("Error in node stream: {:?}", e);
-                        break;
+                if current_nodes.is_empty() {
+                    break;
+                }
+
+                // 1. 并行启动所有节点的流
+                // 我们需要同时消费多个流，这里稍微复杂一点
+                // 使用 futures::stream::select_all 来合并所有节点的事件流
+
+                let mut streams = Vec::new();
+                for &node in &current_nodes {
+                    match graph.run_stream(node, &state).await {
+                        Ok(s) => streams.push(s),
+                        Err(e) => {
+                            tracing::error!("Error starting node stream {:?}: {:?}", node, e);
+                            // 这里我们选择忽略启动失败的节点，或者应该直接中止整个图？
+                            // 目前选择中止
+                            return;
+                        }
                     }
-                };
+                }
 
-                let mut next = Vec::new();
-                let mut update_output = None;
+                // 合并所有流
+                let mut combined_stream = futures::stream::select_all(streams);
 
-                while let Some(event_result) = node_stream.next().await {
+                let mut all_next_nodes = Vec::new();
+                // 暂存 updates，确保在本轮所有事件处理完后统一 apply
+                let mut updates = Vec::new();
+
+                while let Some(event_result) = combined_stream.next().await {
                     match event_result {
                         Ok(event) => match event {
-                            GraphEvent::NodeEnd {
-                                output, next_nodes, ..
-                            } => {
-                                update_output = Some(output);
-                                next = next_nodes;
-                                break;
+                            GraphEvent::NodeEnd { output, next_nodes, .. } => {
+                                updates.push(output);
+                                all_next_nodes.extend(next_nodes);
                             }
                             GraphEvent::Streaming { event, .. } => {
-                                tracing::debug!("Streaming event: {:?}", event);
                                 yield event;
                             }
-                            _ => {}
+                            _ => {} // NodeStart 等忽略
                         },
                         Err(e) => {
                             tracing::error!("Error in node execution: {:?}", e);
-                            break;
+                            return;
                         }
                     }
                 }
-                drop(node_stream);
 
-                if let Some(update) = update_output {
-                    // 使用 reducer 合并状态
+                // 必须显式 drop combined_stream，因为它持有 state 的借用
+                drop(combined_stream);
+
+                // 2. 本轮结束，应用所有 updates
+                for update in updates {
                     state = (reducer)(state, update);
                 }
 
-                match next.len() {
-                    0 => {
-                        tracing::debug!("No next nodes, graph completed");
-                        break;
-                    }
-                    1 => {
-                        current = next[0];
-                    }
-                    _ => {
-                        match strategy {
-                            RunStrategy::StopAtNonLinear => {
-                                tracing::debug!("Non-linear branch, stopping");
-                                break;
-                            }
-                            RunStrategy::PickFirst => {
-                                current = next[0];
-                            }
-                            RunStrategy::PickLast => {
-                                current = next[next.len() - 1];
-                            }
-                            RunStrategy::Parallel => {
-                                current = next[0];
-                            }
+                // 3. 准备下一轮
+                if all_next_nodes.is_empty() {
+                    break;
+                }
+
+                all_next_nodes.sort_unstable();
+                all_next_nodes.dedup();
+
+                match strategy {
+                    RunStrategy::StopAtNonLinear => {
+                        if all_next_nodes.len() > 1 {
+                            break;
                         }
+                        current_nodes = all_next_nodes;
+                    }
+                    RunStrategy::PickFirst => {
+                        current_nodes = vec![all_next_nodes[0]];
+                    }
+                    RunStrategy::PickLast => {
+                        current_nodes = vec![all_next_nodes[all_next_nodes.len() - 1]];
+                    }
+                    RunStrategy::Parallel => {
+                        current_nodes = all_next_nodes;
                     }
                 }
             }
@@ -257,28 +266,43 @@ where
         &self,
         mut state: S,
         max_steps: usize,
-    ) -> Result<(S, InternedGraphLabel), GraphError<E>> {
-        let mut current = self.entry;
+    ) -> Result<(S, Vec<InternedGraphLabel>), GraphError<E>> {
+        let mut current_nodes = vec![self.entry];
 
         for _ in 0..max_steps {
-            let (update, next) = self.graph.run_once(current, &state).await?;
-            state = (self.reducer)(state, update);
+            // Parallel execution
+            let futures = current_nodes
+                .iter()
+                .map(|&node| self.graph.run_once(node, &state));
+            let results = join_all(futures).await;
 
-            if next.len() != 1 {
-                return Ok((state, current));
+            let mut all_next_nodes = Vec::new();
+            for result in results {
+                let (update, next) = result?;
+                state = (self.reducer)(state, update);
+                all_next_nodes.extend(next);
             }
 
-            current = next[0];
+            all_next_nodes.sort_unstable();
+            all_next_nodes.dedup();
+
+            if all_next_nodes.is_empty() {
+                return Ok((state, current_nodes));
+            }
+
+            // 如果不是线性流（即产生了分支），run_until_stuck 的定义可能比较模糊
+            // 这里我们假设它总是尽可能往下走，支持并行
+            current_nodes = all_next_nodes;
         }
 
-        Ok((state, current))
+        Ok((state, current_nodes))
     }
 }
 
 /// StateGraph 运行器（用于逐步执行）
 pub struct StateGraphRunner<'g, S, U, E, Ev: Debug> {
     pub state_graph: &'g StateGraph<S, U, E, Ev>,
-    pub current: InternedGraphLabel,
+    pub current_nodes: Vec<InternedGraphLabel>,
     pub state: S,
 }
 
@@ -287,7 +311,7 @@ impl<'g, S, U, E: Debug, Ev: Debug> StateGraphRunner<'g, S, U, E, Ev> {
     pub fn new(state_graph: &'g StateGraph<S, U, E, Ev>, initial_state: S) -> Self {
         Self {
             state_graph,
-            current: state_graph.entry,
+            current_nodes: vec![state_graph.entry],
             state: initial_state,
         }
     }
@@ -300,18 +324,39 @@ impl<'g, S, U, E: Debug, Ev: Debug> StateGraphRunner<'g, S, U, E, Ev> {
         E: Send + Sync + 'static,
         Ev: Send + Sync + 'static,
     {
-        let (update, next) = self
-            .state_graph
-            .graph
-            .run_once(self.current, &self.state)
-            .await?;
-
-        self.state = (self.state_graph.reducer)(self.state.clone(), update);
-
-        if next.len() == 1 {
-            self.current = next[0];
+        if self.current_nodes.is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(next)
+
+        let futures = self
+            .current_nodes
+            .iter()
+            .map(|&node| self.state_graph.graph.run_once(node, &self.state));
+
+        let results = join_all(futures).await;
+
+        let mut all_next_nodes = Vec::new();
+
+        // 这里的 state 更新需要注意：
+        // step() 可能会被多次调用，我们需要更新 self.state
+        let mut new_state = self.state.clone();
+
+        for result in results {
+            let (update, next) = result?;
+            new_state = (self.state_graph.reducer)(new_state, update);
+            all_next_nodes.extend(next);
+        }
+
+        self.state = new_state;
+
+        all_next_nodes.sort_unstable();
+        all_next_nodes.dedup();
+
+        if !all_next_nodes.is_empty() {
+            self.current_nodes = all_next_nodes.clone();
+        }
+
+        Ok(all_next_nodes)
     }
 }
 
@@ -367,10 +412,10 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::B, TestLabel::C);
 
-        let (final_state, final_label) = sg.run(0, 10, RunStrategy::PickFirst).await.unwrap();
+        let (final_state, final_nodes) = sg.run(0, 10, RunStrategy::PickFirst).await.unwrap();
 
         assert_eq!(final_state, 3);
-        assert_eq!(final_label, TestLabel::C.intern());
+        assert_eq!(final_nodes, vec![TestLabel::C.intern()]);
     }
 
     #[tokio::test]
@@ -392,10 +437,10 @@ mod tests {
             }
         });
 
-        let (final_state, final_label) = sg.run(0, 10, RunStrategy::PickFirst).await.unwrap();
+        let (final_state, final_nodes) = sg.run(0, 10, RunStrategy::PickFirst).await.unwrap();
 
         assert_eq!(final_state, 2);
-        assert_eq!(final_label, TestLabel::B.intern());
+        assert_eq!(final_nodes, vec![TestLabel::B.intern()]);
     }
 
     #[tokio::test]
@@ -416,10 +461,10 @@ mod tests {
             }
         });
 
-        let (final_state, final_label) = sg.run(-1, 10, RunStrategy::PickFirst).await.unwrap();
+        let (final_state, final_nodes) = sg.run(-1, 10, RunStrategy::PickFirst).await.unwrap();
 
         assert_eq!(final_state, 0);
-        assert_eq!(final_label, TestLabel::A.intern());
+        assert_eq!(final_nodes, vec![TestLabel::A.intern()]);
     }
 
     #[tokio::test]
@@ -438,17 +483,17 @@ mod tests {
 
         let next1 = runner.step().await.unwrap();
         assert_eq!(runner.state, 1);
-        assert_eq!(runner.current, TestLabel::B.intern());
+        assert_eq!(runner.current_nodes, vec![TestLabel::B.intern()]);
         assert_eq!(next1, vec![TestLabel::B.intern()]);
 
         let next2 = runner.step().await.unwrap();
         assert_eq!(runner.state, 2);
-        assert_eq!(runner.current, TestLabel::C.intern());
+        assert_eq!(runner.current_nodes, vec![TestLabel::C.intern()]);
         assert_eq!(next2, vec![TestLabel::C.intern()]);
 
         let next3 = runner.step().await.unwrap();
         assert_eq!(runner.state, 3);
-        assert_eq!(runner.current, TestLabel::C.intern());
+        assert_eq!(runner.current_nodes, vec![TestLabel::C.intern()]);
         assert!(next3.is_empty());
     }
 
@@ -464,10 +509,13 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
-        let (final_state, final_label) = sg.run(0, 10, RunStrategy::StopAtNonLinear).await.unwrap();
+        let (final_state, final_nodes) = sg.run(0, 10, RunStrategy::StopAtNonLinear).await.unwrap();
 
         assert_eq!(final_state, 1);
-        assert_eq!(final_label, TestLabel::A.intern());
+        // Returns [B, C] but since we stop, it returns the next nodes that caused the stop?
+        // Wait, logic says: if all_next_nodes.len() > 1 { return Ok((state, current_nodes)); }
+        // So it returns the *previous* current_nodes (which is A)
+        assert_eq!(final_nodes, vec![TestLabel::A.intern()]);
     }
 
     #[tokio::test]
@@ -482,10 +530,13 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
-        let (final_state, final_label) = sg.run(0, 10, RunStrategy::PickFirst).await.unwrap();
+        let (final_state, final_nodes) = sg.run(0, 10, RunStrategy::PickFirst).await.unwrap();
 
+        // B and C are candidates. PickFirst picks B (because B comes first in sort order or insertion order?)
+        // HashMap iteration order is random. But we sort_unstable() before dedup.
+        // Label B vs C. B < C. So B is first.
         assert_eq!(final_state, 2);
-        assert_eq!(final_label, TestLabel::B.intern());
+        assert_eq!(final_nodes, vec![TestLabel::B.intern()]);
     }
 
     #[tokio::test]
@@ -500,10 +551,11 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
-        let (final_state, final_label) = sg.run(0, 10, RunStrategy::PickLast).await.unwrap();
+        let (final_state, final_nodes) = sg.run(0, 10, RunStrategy::PickLast).await.unwrap();
 
         assert_eq!(final_state, 2);
-        assert_eq!(final_label, TestLabel::C.intern());
+        // Sorted: B, C. Last is C.
+        assert_eq!(final_nodes, vec![TestLabel::C.intern()]);
     }
 
     #[tokio::test]
@@ -561,8 +613,78 @@ mod tests {
         // reducer(1, 2) -> 3.
         // reducer(3, 2) -> 5.
 
-        let (final_state, _) = sg.run(0, 10, RunStrategy::Parallel).await.unwrap();
+        let (final_state, final_nodes) = sg.run(0, 10, RunStrategy::Parallel).await.unwrap();
 
         assert_eq!(final_state, 5);
+
+        // Both B and C finished. They have no outgoing edges.
+        // So all_next_nodes is empty.
+        // The loop terminates. current_nodes is [B, C].
+        let mut expected = vec![TestLabel::B.intern(), TestLabel::C.intern()];
+        expected.sort();
+        assert_eq!(final_nodes, expected);
+    }
+
+    #[tokio::test]
+    async fn state_graph_parallel_multistep() {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, GraphLabel)]
+        enum Label {
+            A,
+            B,
+            C,
+            D,
+            E,
+        }
+
+        let mut sg: StateGraph<Vec<String>, String, NodeError, ()> =
+            StateGraph::new(Label::A, |mut state: Vec<String>, update: String| {
+                state.push(update);
+                state.sort(); // Sort to make deterministic comparison easy
+                state
+            });
+
+        #[derive(Debug)]
+        struct NameNode(&'static str);
+        #[async_trait]
+        impl Node<Vec<String>, String, NodeError, ()> for NameNode {
+            async fn run_sync(&self, _: &Vec<String>) -> Result<String, NodeError> {
+                Ok(self.0.to_string())
+            }
+            async fn run_stream(
+                &self,
+                _: &Vec<String>,
+                _: &mut dyn EventSink<()>,
+            ) -> Result<String, NodeError> {
+                Ok(self.0.to_string())
+            }
+        }
+
+        sg.add_node(Label::A, NameNode("A"));
+        sg.add_node(Label::B, NameNode("B"));
+        sg.add_node(Label::C, NameNode("C"));
+        sg.add_node(Label::D, NameNode("D"));
+        sg.add_node(Label::E, NameNode("E"));
+
+        // A -> B, A -> C
+        sg.add_edge(Label::A, Label::B);
+        sg.add_edge(Label::A, Label::C);
+
+        // B -> D, C -> E
+        sg.add_edge(Label::B, Label::D);
+        sg.add_edge(Label::C, Label::E);
+
+        // Execution flow:
+        // Step 1: A runs. Output "A". State ["A"]. Next [B, C].
+        // Step 2: B, C run. Output "B", "C". State ["A", "B", "C"]. Next [D, E].
+        // Step 3: D, E run. Output "D", "E". State ["A", "B", "C", "D", "E"]. Next [].
+
+        let (final_state, final_nodes) =
+            sg.run(Vec::new(), 10, RunStrategy::Parallel).await.unwrap();
+
+        assert_eq!(final_state, vec!["A", "B", "C", "D", "E"]);
+
+        let mut expected_nodes = vec![Label::D.intern(), Label::E.intern()];
+        expected_nodes.sort();
+        assert_eq!(final_nodes, expected_nodes);
     }
 }

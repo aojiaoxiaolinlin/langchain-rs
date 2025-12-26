@@ -551,7 +551,7 @@ mod tests {
 
         let (final_state, final_label) = sg.run_until_stuck(initial, 10).await.unwrap();
 
-        assert_eq!(final_label, TestLabel::Tool.intern());
+        assert_eq!(final_label, vec![TestLabel::Tool.intern()]);
         assert_eq!(final_state.llm_calls, 1);
         assert_eq!(final_state.messages.len(), 3);
 
