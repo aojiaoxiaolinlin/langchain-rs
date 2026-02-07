@@ -532,9 +532,7 @@ impl ReactAgent {
             && let Some(config) = config
         {
             debug!("有checkpointer，尝试从checkpointer获取状态");
-            let state = if let Ok(Some(checkpoint)) =
-                checkpointer.get(config).await
-            {
+            if let Ok(Some(checkpoint)) = checkpointer.get(config).await {
                 debug!("从checkpointer获取状态成功");
                 checkpoint.state
             } else {
@@ -550,8 +548,7 @@ impl ReactAgent {
                 };
                 checkpointer.put(config, &checkpoint).await.unwrap();
                 state
-            };
-            state
+            }
         } else {
             let mut state = MessagesState::default();
             if let Some(system_prompt) = &self.system_prompt {
@@ -694,7 +691,7 @@ mod tests {
             .build();
 
         // 第一次调用，使用 thread_id "thread-1"
-        let thread_id = "thread-1".to_string();
+        let thread_id = "thread-1".to_owned();
         let state1 = agent
             .invoke(Message::user("hello"), Some(thread_id.clone()))
             .await
@@ -729,7 +726,7 @@ mod tests {
             // .with_tools(vec![tool])
             .build(); // 默认无 checkpointer
 
-        let thread_id = "thread-2".to_string();
+        let thread_id = "thread-2".to_owned();
 
         // 第一次调用
         let state1 = agent

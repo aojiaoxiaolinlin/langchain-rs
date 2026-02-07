@@ -102,7 +102,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
         // 2. 等待响应（超时 1 小时）
         let response = self
             .interrupt_manager
-            .wait_for_response(&self.interrupt.id, Some(3600_000))
+            .wait_for_response(&self.interrupt.id, Some(3_600_000))
             .await?;
 
         tracing::info!(
@@ -118,7 +118,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
             InterruptResponse::Confirm => {
                 // 确认操作，添加系统消息
                 delta.push_message_owned(Message::Assistant {
-                    content: "操作已确认".to_string(),
+                    content: "操作已确认".to_owned(),
                     tool_calls: None,
                     name: None,
                 });
@@ -133,7 +133,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
             InterruptResponse::Approve => {
                 // 审核通过
                 delta.push_message_owned(Message::Assistant {
-                    content: "审核已通过".to_string(),
+                    content: "审核已通过".to_owned(),
                     tool_calls: None,
                     name: None,
                 });
@@ -148,9 +148,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
             }
             InterruptResponse::Cancel => {
                 // 用户取消操作
-                return Err(InterruptError::InvalidResponse(
-                    "用户取消了操作".to_string(),
-                ));
+                return Err(InterruptError::InvalidResponse("用户取消了操作".to_owned()));
             }
         }
 
@@ -234,7 +232,7 @@ mod tests {
                 .respond(
                     &pending[0].id,
                     InterruptResponse::Input {
-                        value: "Alice".to_string(),
+                        value: "Alice".to_owned(),
                     },
                 )
                 .await
@@ -250,10 +248,10 @@ mod tests {
 
         if let Ok(state) = result {
             assert_eq!(state.messages.len(), 1);
-            if let Message::User { content, .. } = &state.messages[0].as_ref() {
-                if let Content::Text(text) = content {
-                    assert_eq!(text, "Alice");
-                }
+            if let Message::User { content, .. } = &state.messages[0].as_ref()
+                && let Content::Text(text) = content
+            {
+                assert_eq!(text, "Alice");
             }
         }
     }
@@ -327,7 +325,7 @@ mod tests {
                 .respond(
                     &pending[0].id,
                     InterruptResponse::Reject {
-                        reason: "安全风险".to_string(),
+                        reason: "安全风险".to_owned(),
                     },
                 )
                 .await
@@ -356,7 +354,7 @@ mod tests {
         let node = HumanInTheLoopNode::single_choice(
             manager.clone(),
             "选择颜色",
-            vec!["红色".to_string(), "绿色".to_string(), "蓝色".to_string()],
+            vec!["红色".to_owned(), "绿色".to_owned(), "蓝色".to_owned()],
         );
 
         let manager_clone = manager.clone();
@@ -372,7 +370,7 @@ mod tests {
                 .respond(
                     &pending[0].id,
                     InterruptResponse::Input {
-                        value: "红色".to_string(),
+                        value: "红色".to_owned(),
                     },
                 )
                 .await
@@ -388,10 +386,10 @@ mod tests {
 
         if let Ok(state) = result {
             assert_eq!(state.messages.len(), 1);
-            if let Message::User { content, .. } = &state.messages[0].as_ref() {
-                if let Content::Text(text) = content {
-                    assert_eq!(text, "红色");
-                }
+            if let Message::User { content, .. } = &state.messages[0].as_ref()
+                && let Content::Text(text) = content
+            {
+                assert_eq!(text, "红色");
             }
         }
     }
@@ -414,7 +412,7 @@ mod tests {
                 .respond(
                     &pending[0].id,
                     InterruptResponse::Input {
-                        value: "yes".to_string(),
+                        value: "yes".to_owned(),
                     },
                 )
                 .await

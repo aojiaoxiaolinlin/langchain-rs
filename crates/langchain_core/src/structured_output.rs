@@ -3,7 +3,7 @@ use crate::{
     request::{ResponseFormat, ToolFunction, ToolSpec},
     state::{ChatModel, InvokeOptions},
 };
-use schemars::{schema::RootSchema, JsonSchema};
+use schemars::{JsonSchema, schema::RootSchema};
 use serde::de::DeserializeOwned;
 use std::{marker::PhantomData, sync::Arc};
 use thiserror::Error;
@@ -31,7 +31,7 @@ pub trait StructuredOutput: JsonSchema + DeserializeOwned + Send + Sync + 'stati
     /// Returns the JSON Output definition in the format of OpenAI ResponseFormat (JsonSchema)
     fn definition() -> ResponseFormat {
         let schema = Self::schema();
-        let schema_json = serde_json::to_string(&schema).unwrap_or_else(|_| "{}".to_string());
+        let schema_json = serde_json::to_string(&schema).unwrap_or_else(|_| "{}".to_owned());
         ResponseFormat::json_schema(schema_json)
     }
 
@@ -42,8 +42,8 @@ pub trait StructuredOutput: JsonSchema + DeserializeOwned + Send + Sync + 'stati
 
         ToolSpec::Function {
             function: ToolFunction {
-                name: "extract_data".to_string(),
-                description: "Extract structured data based on the schema".to_string(),
+                name: "extract_data".to_owned(),
+                description: "Extract structured data based on the schema".to_owned(),
                 parameters: schema_json,
             },
         }
@@ -103,7 +103,7 @@ impl<T: StructuredOutput> StructuredOutputStrategy<T> for JsonSchemaStrategy<T> 
 
     fn parse(&self, message: &crate::message::Message) -> Result<T, StructuredOutputError> {
         let content = message.content();
-        serde_json::from_str(&content).map_err(|e| {
+        serde_json::from_str(content).map_err(|e| {
             StructuredOutputError::Parsing(format!(
                 "Failed to parse JSON Schema output: {}; Content: {}",
                 e, content
@@ -155,7 +155,7 @@ impl<T: StructuredOutput> StructuredOutputStrategy<T> for JsonModeStrategy<T> {
         let content = message.content();
         // Use JsonParser to extract JSON from markdown if present
         let parser = JsonParser::<T>::new();
-        parser.parse(&content).map_err(|e| {
+        parser.parse(content).map_err(|e| {
             StructuredOutputError::Parsing(format!("Failed to parse JSON Mode output: {}", e))
         })
     }
@@ -189,7 +189,7 @@ impl<T: StructuredOutput> StructuredOutputStrategy<T> for ToolCallingStrategy<T>
         options: &mut InvokeOptions,
         _messages: &mut Vec<Arc<crate::message::Message>>,
     ) {
-        options.tool_choice = Some(self.tool_spec.function_name().to_string());
+        options.tool_choice = Some(self.tool_spec.function_name().to_owned());
     }
 
     fn tools(&self) -> Option<Vec<ToolSpec>> {
@@ -197,14 +197,20 @@ impl<T: StructuredOutput> StructuredOutputStrategy<T> for ToolCallingStrategy<T>
     }
 
     fn parse(&self, message: &crate::message::Message) -> Result<T, StructuredOutputError> {
-        if let crate::message::Message::Assistant { tool_calls: Some(calls), .. } = message {
-            if let Some(call) = calls.first() {
-                    let args = call.arguments();
-                    let parsed: T = serde_json::from_value(args).map_err(StructuredOutputError::Serialization)?;
-                    return Ok(parsed);
-            }
+        if let crate::message::Message::Assistant {
+            tool_calls: Some(calls),
+            ..
+        } = message
+            && let Some(call) = calls.first()
+        {
+            let args = call.arguments();
+            let parsed: T =
+                serde_json::from_value(args).map_err(StructuredOutputError::Serialization)?;
+            return Ok(parsed);
         }
-        Err(StructuredOutputError::Parsing("Model did not call the expected tool".into()))
+        Err(StructuredOutputError::Parsing(
+            "Model did not call the expected tool".into(),
+        ))
     }
 }
 
@@ -221,15 +227,23 @@ pub enum StructuredOutputMethod {
 #[async_trait::async_trait]
 pub trait ChatModelExt: ChatModel {
     /// Invokes the model and parses the output as a structured type using the default strategy (JsonSchema).
-    async fn invoke_structured<T: StructuredOutput>(&self, input: impl Into<String> + Send) -> Result<T, StructuredOutputError>
+    async fn invoke_structured<T: StructuredOutput>(
+        &self,
+        input: impl Into<String> + Send,
+    ) -> Result<T, StructuredOutputError>
     where
         Self: Sized,
     {
-        self.invoke_structured_with_strategy(input, JsonSchemaStrategy::<T>::new()).await
+        self.invoke_structured_with_strategy(input, JsonSchemaStrategy::<T>::new())
+            .await
     }
 
     /// Invokes the model and parses the output using a specific strategy.
-    async fn invoke_structured_with_strategy<T, S>(&self, input: impl Into<String> + Send, strategy: S) -> Result<T, StructuredOutputError>
+    async fn invoke_structured_with_strategy<T, S>(
+        &self,
+        input: impl Into<String> + Send,
+        strategy: S,
+    ) -> Result<T, StructuredOutputError>
     where
         Self: Sized,
         T: StructuredOutput,
@@ -244,7 +258,7 @@ pub trait ChatModelExt: ChatModel {
 
         // 1. Prepare options and messages using strategy
         strategy.prepare(&mut options, &mut final_messages);
-        
+
         // 2. Handle tools
         let tools = strategy.tools();
         if let Some(ref t) = tools {
@@ -257,26 +271,36 @@ pub trait ChatModelExt: ChatModel {
             .await
             .map_err(StructuredOutputError::Model)?;
 
-        let last_msg = completion
-            .messages
-            .last()
-            .ok_or_else(|| {
-                StructuredOutputError::Parsing("No message returned from model".to_string())
-            })?;
+        let last_msg = completion.messages.last().ok_or_else(|| {
+            StructuredOutputError::Parsing("No message returned from model".to_owned())
+        })?;
 
         // 4. Parse output using strategy
         strategy.parse(last_msg)
     }
-    
+
     /// Invokes the model using a specific structured output method enum.
-    async fn invoke_structured_with_method<T: StructuredOutput>(&self, input: impl Into<String> + Send, method: StructuredOutputMethod) -> Result<T, StructuredOutputError>
+    async fn invoke_structured_with_method<T: StructuredOutput>(
+        &self,
+        input: impl Into<String> + Send,
+        method: StructuredOutputMethod,
+    ) -> Result<T, StructuredOutputError>
     where
         Self: Sized,
     {
-         match method {
-            StructuredOutputMethod::JsonSchema => self.invoke_structured_with_strategy(input, JsonSchemaStrategy::<T>::new()).await,
-            StructuredOutputMethod::JsonMode => self.invoke_structured_with_strategy(input, JsonModeStrategy::<T>::new()).await,
-            StructuredOutputMethod::FunctionCalling => self.invoke_structured_with_strategy(input, ToolCallingStrategy::<T>::new()).await,
+        match method {
+            StructuredOutputMethod::JsonSchema => {
+                self.invoke_structured_with_strategy(input, JsonSchemaStrategy::<T>::new())
+                    .await
+            }
+            StructuredOutputMethod::JsonMode => {
+                self.invoke_structured_with_strategy(input, JsonModeStrategy::<T>::new())
+                    .await
+            }
+            StructuredOutputMethod::FunctionCalling => {
+                self.invoke_structured_with_strategy(input, ToolCallingStrategy::<T>::new())
+                    .await
+            }
         }
     }
 }
@@ -286,11 +310,11 @@ impl<M: ChatModel> ChatModelExt for M {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::Message;
+    use crate::state::{ChatCompletion, StandardChatStream};
     use schemars::JsonSchema;
     use serde::Deserialize;
-    use crate::message::Message;
-    use crate::state::{ChatStreamEvent, StandardChatStream, ChatCompletion};
-    
+
     #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
     struct TestData {
         name: String,
@@ -312,34 +336,47 @@ mod tests {
             // Verification logic based on expected_method
             match self.expected_method.as_str() {
                 "json_schema" => {
-                    assert!(options.response_format.as_ref().unwrap().json_schema.is_some());
-                },
+                    assert!(
+                        options
+                            .response_format
+                            .as_ref()
+                            .unwrap()
+                            .json_schema
+                            .is_some()
+                    );
+                }
                 "json_mode" => {
-                    assert_eq!(format!("{:?}", options.response_format.as_ref().unwrap().format_type), "JsonObject");
+                    assert_eq!(
+                        format!(
+                            "{:?}",
+                            options.response_format.as_ref().unwrap().format_type
+                        ),
+                        "JsonObject"
+                    );
                     // Check if prompt was injected
                     let last_msg = messages.last().unwrap().content();
                     assert!(last_msg.contains("IMPORTANT: Respond with valid JSON"));
-                },
+                }
                 "function_calling" => {
-                     assert!(options.tools.is_some());
-                     assert_eq!(options.tool_choice.as_deref(), Some("extract_data"));
-                },
+                    assert!(options.tools.is_some());
+                    assert_eq!(options.tool_choice.as_deref(), Some("extract_data"));
+                }
                 _ => {}
             }
 
             // Return mock response
             let msg = if self.expected_method == "function_calling" {
-                Message::Assistant { 
-                    content: "".into(), 
+                Message::Assistant {
+                    content: "".into(),
                     tool_calls: Some(vec![crate::message::ToolCall {
                         id: "call_1".into(),
                         type_name: "function".into(),
                         function: crate::message::FunctionCall {
                             name: "extract_data".into(),
                             arguments: serde_json::from_str(&self.response_content).unwrap(),
-                        }
+                        },
                     }]),
-                    name: None 
+                    name: None,
                 }
             } else {
                 Message::assistant(self.response_content.clone())
@@ -366,31 +403,55 @@ mod tests {
             expected_method: "json_schema".into(),
             response_content: r#"{"name": "Alice", "age": 30}"#.into(),
         };
-        
+
         let result: TestData = model.invoke_structured("test").await.unwrap();
-        assert_eq!(result, TestData { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            result,
+            TestData {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
-    
+
     #[tokio::test]
     async fn test_json_mode_strategy() {
         let model = MockModel {
             expected_method: "json_mode".into(),
             response_content: r#"{"name": "Bob", "age": 25}"#.into(),
         };
-        
-        let result: TestData = model.invoke_structured_with_method("test", StructuredOutputMethod::JsonMode).await.unwrap();
-        assert_eq!(result, TestData { name: "Bob".into(), age: 25 });
+
+        let result: TestData = model
+            .invoke_structured_with_method("test", StructuredOutputMethod::JsonMode)
+            .await
+            .unwrap();
+        assert_eq!(
+            result,
+            TestData {
+                name: "Bob".into(),
+                age: 25
+            }
+        );
     }
 
-     #[tokio::test]
+    #[tokio::test]
     async fn test_function_calling_strategy() {
         let model = MockModel {
             expected_method: "function_calling".into(),
             response_content: r#"{"name": "Charlie", "age": 40}"#.into(),
         };
-        
+
         // Explicitly using strategy helper
-        let result: TestData = model.invoke_structured_with_strategy("test", ToolCallingStrategy::<TestData>::new()).await.unwrap();
-        assert_eq!(result, TestData { name: "Charlie".into(), age: 40 });
+        let result: TestData = model
+            .invoke_structured_with_strategy("test", ToolCallingStrategy::<TestData>::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            result,
+            TestData {
+                name: "Charlie".into(),
+                age: 40
+            }
+        );
     }
 }

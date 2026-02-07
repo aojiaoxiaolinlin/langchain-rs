@@ -12,9 +12,7 @@ use tokio::sync::RwLock;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InterruptReason {
     /// 需要人工确认
-    Confirmation {
-        message: String,
-    },
+    Confirmation { message: String },
     /// 需要人工输入
     Input {
         prompt: String,
@@ -35,38 +33,48 @@ impl InterruptReason {
             InterruptReason::Confirmation { message } => {
                 format!("确认操作: {} (同意/拒绝)", message)
             }
-            InterruptReason::Input { prompt, input_type } => {
-                match input_type {
-                    InputType::Text => {
-                        format!("请输入: {}", prompt)
-                    }
-                    InputType::SingleChoice { options } => {
-                        format!("请选择 (输入选项编号):\n{}\n你的选择:",
-                            options.iter()
-                                .enumerate()
-                                .map(|(i, opt)| format!("  {}. {}", i + 1, opt))
-                                .collect::<Vec<_>>()
-                                .join("\n"))
-                    }
-                    InputType::MultipleChoice { options } => {
-                        format!("请选择 (可多选，输入选项编号用逗号分隔):\n{}\n你的选择:",
-                            options.iter()
-                                .enumerate()
-                                .map(|(i, opt)| format!("  {}. {}", i + 1, opt))
-                                .collect::<Vec<_>>()
-                                .join("\n"))
-                    }
-                    InputType::Boolean => {
-                        format!("是否同意 (yes/no): {}", prompt)
-                    }
-                    InputType::Number => {
-                        format!("请输入数字: {}", prompt)
-                    }
+            InterruptReason::Input { prompt, input_type } => match input_type {
+                InputType::Text => {
+                    format!("请输入: {}", prompt)
                 }
-            }
-            InterruptReason::Review { content, approve_message, reject_message } => {
-                format!("审核内容:\n{}\n\n同意: {}\n拒绝: {}",
-                    content, approve_message, reject_message)
+                InputType::SingleChoice { options } => {
+                    format!(
+                        "请选择 (输入选项编号):\n{}\n你的选择:",
+                        options
+                            .iter()
+                            .enumerate()
+                            .map(|(i, opt)| format!("  {}. {}", i + 1, opt))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    )
+                }
+                InputType::MultipleChoice { options } => {
+                    format!(
+                        "请选择 (可多选，输入选项编号用逗号分隔):\n{}\n你的选择:",
+                        options
+                            .iter()
+                            .enumerate()
+                            .map(|(i, opt)| format!("  {}. {}", i + 1, opt))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    )
+                }
+                InputType::Boolean => {
+                    format!("是否同意 (yes/no): {}", prompt)
+                }
+                InputType::Number => {
+                    format!("请输入数字: {}", prompt)
+                }
+            },
+            InterruptReason::Review {
+                content,
+                approve_message,
+                reject_message,
+            } => {
+                format!(
+                    "审核内容:\n{}\n\n同意: {}\n拒绝: {}",
+                    content, approve_message, reject_message
+                )
             }
         }
     }
@@ -229,7 +237,7 @@ impl InMemoryInterruptManager {
 
     /// 生成默认的 thread_id（如果未提供）
     pub fn default_thread_id() -> String {
-        "default".to_string()
+        "default".to_owned()
     }
 }
 
@@ -239,14 +247,19 @@ impl InterruptManager for InMemoryInterruptManager {
         let mut pending = self.pending.write().await;
         let thread_id = Self::default_thread_id();
 
-        pending.entry(thread_id)
+        pending
+            .entry(thread_id)
             .or_insert_with(Vec::new)
             .push(interrupt.clone());
 
         // 通知等待的响应者
         self.notify.0.notify_waiters();
 
-        tracing::info!("Interrupt created: id={}, reason={:?}", interrupt.id, interrupt.reason);
+        tracing::info!(
+            "Interrupt created: id={}, reason={:?}",
+            interrupt.id,
+            interrupt.reason
+        );
 
         Ok(())
     }
@@ -268,10 +281,10 @@ impl InterruptManager for InMemoryInterruptManager {
             }
 
             // 检查超时
-            if let Some(timeout) = timeout_ms {
-                if start.elapsed().as_millis() > timeout as u128 {
-                    return Err(InterruptError::Timeout);
-                }
+            if let Some(timeout) = timeout_ms
+                && start.elapsed().as_millis() > timeout as u128
+            {
+                return Err(InterruptError::Timeout);
             }
 
             // 等待通知（使用短超时以避免阻塞太久）
@@ -295,7 +308,7 @@ impl InterruptManager for InMemoryInterruptManager {
         // 存储响应
         {
             let mut responses = self.responses.write().await;
-            responses.insert(interrupt_id.to_string(), response);
+            responses.insert(interrupt_id.to_owned(), response);
         }
 
         // 从待处理列表中移除
@@ -352,7 +365,10 @@ mod tests {
         manager.interrupt(interrupt.clone()).await.unwrap();
 
         // 获取待处理中断
-        let pending = manager.get_pending(&InMemoryInterruptManager::default_thread_id()).await.unwrap();
+        let pending = manager
+            .get_pending(&InMemoryInterruptManager::default_thread_id())
+            .await
+            .unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].id, interrupt.id);
 
@@ -360,15 +376,20 @@ mod tests {
         let manager_clone = manager.clone();
         let interrupt_id_clone = interrupt.id.clone();
         let handle = tokio::spawn(async move {
-            manager_clone.wait_for_response(&interrupt_id_clone, Some(5000)).await
+            manager_clone
+                .wait_for_response(&interrupt_id_clone, Some(5000))
+                .await
         });
 
         // 稍微延迟后提交响应
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         manager
-            .respond(&interrupt.id, InterruptResponse::Input {
-                value: "Alice".to_string(),
-            })
+            .respond(
+                &interrupt.id,
+                InterruptResponse::Input {
+                    value: "Alice".to_owned(),
+                },
+            )
             .await
             .unwrap();
 
@@ -390,9 +411,7 @@ mod tests {
         manager.interrupt(interrupt.clone()).await.unwrap();
 
         // 等待响应但超时（不提交响应）
-        let result = manager
-            .wait_for_response(&interrupt.id, Some(100))
-            .await;
+        let result = manager.wait_for_response(&interrupt.id, Some(100)).await;
 
         assert!(matches!(result, Err(InterruptError::Timeout)));
     }
@@ -413,7 +432,10 @@ mod tests {
         assert!(!cancelled);
 
         // 验证已从待处理列表中移除
-        let pending = manager.get_pending(&InMemoryInterruptManager::default_thread_id()).await.unwrap();
+        let pending = manager
+            .get_pending(&InMemoryInterruptManager::default_thread_id())
+            .await
+            .unwrap();
         assert_eq!(pending.len(), 0);
     }
 
@@ -431,7 +453,10 @@ mod tests {
         manager.interrupt(int3).await.unwrap();
 
         // 获取所有待处理中断
-        let pending = manager.get_pending(&InMemoryInterruptManager::default_thread_id()).await.unwrap();
+        let pending = manager
+            .get_pending(&InMemoryInterruptManager::default_thread_id())
+            .await
+            .unwrap();
         assert_eq!(pending.len(), 3);
 
         // 响应其中一个
@@ -441,7 +466,10 @@ mod tests {
             .unwrap();
 
         // 验证数量减少
-        let pending = manager.get_pending(&InMemoryInterruptManager::default_thread_id()).await.unwrap();
+        let pending = manager
+            .get_pending(&InMemoryInterruptManager::default_thread_id())
+            .await
+            .unwrap();
         assert_eq!(pending.len(), 2);
     }
 
@@ -455,11 +483,7 @@ mod tests {
         assert!(input.as_prompt().contains("请输入数字"));
         assert!(input.as_prompt().contains("请输入年龄"));
 
-        let review = Interrupt::review(
-            "操作内容",
-            "批准",
-            "拒绝",
-        );
+        let review = Interrupt::review("操作内容", "批准", "拒绝");
         assert!(review.as_prompt().contains("审核内容"));
         assert!(review.as_prompt().contains("操作内容"));
     }
@@ -469,7 +493,7 @@ mod tests {
         let input = Interrupt::input(
             "选择颜色",
             InputType::SingleChoice {
-                options: vec!["红色".to_string(), "绿色".to_string(), "蓝色".to_string()],
+                options: vec!["红色".to_owned(), "绿色".to_owned(), "蓝色".to_owned()],
             },
         );
 
