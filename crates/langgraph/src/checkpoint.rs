@@ -6,10 +6,10 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 /// 运行配置，用于标识 Checkpoint 的唯一性（如线程ID）
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct RunnableConfig {
     /// 线程 ID，用于隔离不同的对话或执行流
-    pub thread_id: String,
+    pub thread_id: Option<String>,
     pub mode: Option<FormatType>,
 }
 
@@ -38,18 +38,14 @@ pub trait Checkpointer<S>: Send + Sync {
     ///
     /// # 返回
     /// * `Option<Checkpoint<S>>` - 如果存在则返回检查点，否则返回 None
-    async fn get(&self, config: &RunnableConfig) -> Result<Option<Checkpoint<S>>, anyhow::Error>;
+    async fn get(&self, thread_id: &str) -> Result<Option<Checkpoint<S>>, anyhow::Error>;
 
     /// 保存检查点
     ///
     /// # 参数
     /// * `config` - 运行配置
     /// * `checkpoint` - 检查点数据
-    async fn put(
-        &self,
-        config: &RunnableConfig,
-        checkpoint: &Checkpoint<S>,
-    ) -> Result<(), anyhow::Error>;
+    async fn put(&self, thread_id: &str, checkpoint: &Checkpoint<S>) -> Result<(), anyhow::Error>;
 }
 
 /// 内存实现的检查点保存器 (MemorySaver)
@@ -76,9 +72,9 @@ impl<S> Checkpointer<S> for MemorySaver
 where
     S: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
-    async fn get(&self, config: &RunnableConfig) -> Result<Option<Checkpoint<S>>, anyhow::Error> {
+    async fn get(&self, thread_id: &str) -> Result<Option<Checkpoint<S>>, anyhow::Error> {
         let storage = self.storage.lock().await;
-        if let Some(data) = storage.get(&config.thread_id) {
+        if let Some(data) = storage.get(thread_id) {
             let checkpoint: Checkpoint<S> = serde_json::from_slice(data)?;
             Ok(Some(checkpoint))
         } else {
@@ -86,14 +82,11 @@ where
         }
     }
 
-    async fn put(
-        &self,
-        config: &RunnableConfig,
-        checkpoint: &Checkpoint<S>,
-    ) -> Result<(), anyhow::Error> {
+    async fn put(&self, thread_id: &str, checkpoint: &Checkpoint<S>) -> Result<(), anyhow::Error> {
         let mut storage = self.storage.lock().await;
         let data = serde_json::to_vec(checkpoint)?;
-        storage.insert(config.thread_id.clone(), data);
+        storage.insert(thread_id.to_owned(), data);
+
         Ok(())
     }
 }
@@ -113,7 +106,7 @@ mod tests {
     async fn test_memory_saver_flow() {
         let saver = MemorySaver::new();
         let config = RunnableConfig {
-            thread_id: "thread-1".to_owned(),
+            thread_id: Some("thread-1".to_owned()),
             mode: None,
         };
 
@@ -129,13 +122,15 @@ mod tests {
         };
 
         // Save
-        Checkpointer::put(&saver, &config, &checkpoint)
+        Checkpointer::put(&saver, config.thread_id.as_ref().unwrap(), &checkpoint)
             .await
             .unwrap();
 
         // Load
         let loaded: Option<Checkpoint<TestState>> =
-            Checkpointer::get(&saver, &config).await.unwrap();
+            Checkpointer::get(&saver, config.thread_id.as_ref().unwrap())
+                .await
+                .unwrap();
 
         assert!(loaded.is_some());
         let loaded = loaded.unwrap();
@@ -147,17 +142,17 @@ mod tests {
     async fn test_memory_saver_isolation() {
         let saver = MemorySaver::new();
         let config1 = RunnableConfig {
-            thread_id: "thread-1".to_owned(),
+            thread_id: Some("thread-1".to_owned()),
             mode: None,
         };
         let config2 = RunnableConfig {
-            thread_id: "thread-2".to_owned(),
+            thread_id: Some("thread-2".to_owned()),
             mode: None,
         };
 
         Checkpointer::<i32>::put(
             &saver,
-            &config1,
+            config1.thread_id.as_ref().unwrap(),
             &Checkpoint {
                 state: 1,
                 next_nodes: vec![],
@@ -167,7 +162,10 @@ mod tests {
         .await
         .unwrap();
 
-        let loaded2: Option<Checkpoint<i32>> = Checkpointer::get(&saver, &config2).await.unwrap();
+        let loaded2: Option<Checkpoint<i32>> =
+            Checkpointer::get(&saver, config2.thread_id.as_ref().unwrap())
+                .await
+                .unwrap();
         assert!(loaded2.is_none());
     }
 }

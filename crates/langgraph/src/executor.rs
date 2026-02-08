@@ -1,4 +1,5 @@
 use crate::{
+    checkpoint::RunnableConfig,
     graph::{Graph, GraphError},
     label::InternedGraphLabel,
     node::NodeContext,
@@ -26,9 +27,11 @@ impl<'g, I, O, E: std::error::Error, Ev: Debug> Executor<'g, I, O, E, Ev> {
         E: Send + Sync + 'static,
         Ev: Send + Sync + 'static,
     {
+        let config = RunnableConfig::default();
+
         let (output, next) = self
             .graph
-            .run_once(self.current, input, NodeContext::empty())
+            .run_once(self.current, input, NodeContext::from_config(&config))
             .await?;
         if next.len() == 1 {
             self.current = next[0];

@@ -287,6 +287,7 @@ pub enum GraphError<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::checkpoint::RunnableConfig;
     use crate::label::GraphLabel;
     use crate::node::{EventSink, Node, NodeContext, NodeError};
     use async_trait::async_trait;
@@ -493,8 +494,9 @@ mod tests {
         graph.add_node_edge(TestLabel::A, TestLabel::B);
 
         let a_label = TestLabel::A.intern();
+        let config = RunnableConfig::default();
         let mut stream = graph
-            .run_stream(a_label, &0, NodeContext::empty())
+            .run_stream(a_label, &0, NodeContext::from_config(&config))
             .await
             .unwrap();
 
@@ -551,8 +553,9 @@ mod tests {
         graph.add_node_edge(TestLabel::A, TestLabel::B);
 
         let a_label = TestLabel::A.intern();
+        let config = RunnableConfig::default();
         let (output, next) = graph
-            .run_once(a_label, &0, NodeContext::empty())
+            .run_once(a_label, &0, NodeContext::from_config(&config))
             .await
             .unwrap();
 
@@ -572,8 +575,9 @@ mod tests {
         graph.add_node_edge(TestLabel::A, TestLabel::B);
 
         let a_label = TestLabel::A.intern();
+        let config = RunnableConfig::default();
         let (output, next) = graph
-            .run_once(a_label, &0, NodeContext::empty())
+            .run_once(a_label, &0, NodeContext::from_config(&config))
             .await
             .unwrap();
 

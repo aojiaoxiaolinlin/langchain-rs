@@ -66,7 +66,6 @@ where
         context: NodeContext<'_>,
     ) -> Result<MessagesState, AgentError> {
         let messages: Vec<_> = input.messages.iter().cloned().collect();
-
         let options = InvokeOptions {
             tools: if self.tools.is_empty() {
                 None
@@ -75,9 +74,7 @@ where
             },
             temperature: self.temperature,
             max_tokens: self.max_tokens,
-            response_format: if let Some(config) = context.config
-                && let Some(mode) = &config.mode
-            {
+            response_format: if let Some(mode) = &context.config.mode {
                 match mode {
                     FormatType::JsonSchema => Some(langchain_core::request::ResponseFormat {
                         format_type: langchain_core::request::FormatType::JsonSchema,
@@ -94,7 +91,6 @@ where
             },
             ..Default::default()
         };
-
         let completion: ChatCompletion = self
             .model
             .invoke(&messages, &options)
@@ -471,23 +467,24 @@ impl ReactAgent {
         message: Message,
         thread_id: Option<String>,
     ) -> Result<MessagesState, AgentError> {
-        let config = thread_id.map(|id| RunnableConfig {
-            thread_id: id,
-            mode: None,
-        });
+        let config = thread_id.map_or(
+            RunnableConfig {
+                thread_id: None,
+                mode: None,
+            },
+            |thread_id| RunnableConfig {
+                thread_id: Some(thread_id),
+                mode: None,
+            },
+        );
 
-        let mut state = self.get_state(config.as_ref()).await;
+        let mut state = self.get_state(&config).await;
         state.push_message_owned(message.clone());
         let max_steps = 25;
 
         let (state, _) = self
             .graph
-            .run(
-                state,
-                config.as_ref(),
-                max_steps,
-                RunStrategy::StopAtNonLinear,
-            )
+            .run(state, &config, max_steps, RunStrategy::StopAtNonLinear)
             .await?;
 
         Ok(state)
@@ -501,23 +498,24 @@ impl ReactAgent {
     where
         S: serde::de::DeserializeOwned,
     {
-        let config = thread_id.map(|id| RunnableConfig {
-            thread_id: id,
-            mode: Some(FormatType::JsonObject),
-        });
+        let config = thread_id.map_or(
+            RunnableConfig {
+                thread_id: None,
+                mode: Some(FormatType::JsonObject),
+            },
+            |thread_id| RunnableConfig {
+                thread_id: Some(thread_id),
+                mode: Some(FormatType::JsonObject),
+            },
+        );
 
-        let mut state = self.get_state(config.as_ref()).await;
+        let mut state = self.get_state(&config).await;
         state.push_message_owned(message.clone());
         let max_steps = 25;
 
         let (state, _) = self
             .graph
-            .run(
-                state,
-                config.as_ref(),
-                max_steps,
-                RunStrategy::StopAtNonLinear,
-            )
+            .run(state, &config, max_steps, RunStrategy::StopAtNonLinear)
             .await?;
 
         let content = state
@@ -542,12 +540,18 @@ impl ReactAgent {
     ) -> Result<impl Stream<Item = ChatStreamEvent> + 'a, AgentError> {
         let graph = &self.graph;
 
-        let config = thread_id.map(|id| RunnableConfig {
-            thread_id: id,
-            mode: None,
-        });
+        let config = thread_id.map_or(
+            RunnableConfig {
+                thread_id: None,
+                mode: None,
+            },
+            |thread_id| RunnableConfig {
+                thread_id: Some(thread_id),
+                mode: None,
+            },
+        );
 
-        let mut state = self.get_state(config.as_ref()).await;
+        let mut state = self.get_state(&config).await;
 
         state.push_message_owned(message.clone());
         let max_steps = 25;
@@ -555,7 +559,7 @@ impl ReactAgent {
         let stream = async_stream::stream! {
             let mut inner_stream = graph.stream(
                 state,
-                config.as_ref(),
+                &config,
                 max_steps,
                 RunStrategy::StopAtNonLinear,
             );
@@ -568,12 +572,12 @@ impl ReactAgent {
         Ok(stream)
     }
 
-    async fn get_state(&self, config: Option<&RunnableConfig>) -> MessagesState {
+    async fn get_state(&self, config: &RunnableConfig) -> MessagesState {
         if let Some(checkpointer) = &self.graph.checkpointer
-            && let Some(config) = config
+            && let Some(thread_id) = &config.thread_id
         {
             debug!("有checkpointer，尝试从checkpointer获取状态");
-            if let Ok(Some(checkpoint)) = checkpointer.get(config).await {
+            if let Ok(Some(checkpoint)) = checkpointer.get(thread_id).await {
                 debug!("从checkpointer获取状态成功");
                 checkpoint.state
             } else {
@@ -587,7 +591,7 @@ impl ReactAgent {
                     next_nodes: Vec::new(),
                     pending_interrupt: None,
                 };
-                checkpointer.put(config, &checkpoint).await.unwrap();
+                checkpointer.put(thread_id, &checkpoint).await.unwrap();
                 state
             }
         } else {

@@ -36,7 +36,7 @@ async fn main() {
         .build();
 
     let result = agent
-        .invoke_structured::<NameResult>(Message::user("我叫李四，我今年25岁"), None)
+        .invoke_structured::<NameResult>(Message::user("我叫哈基米，我今年25岁"), None)
         .await
         .unwrap();
 

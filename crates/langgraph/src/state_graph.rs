@@ -149,7 +149,7 @@ where
     pub async fn run(
         &self,
         mut state: S,
-        config: Option<&RunnableConfig>,
+        config: &RunnableConfig,
         max_steps: usize,
         strategy: RunStrategy,
     ) -> Result<(S, Vec<InternedGraphLabel>), GraphError<E>> {
@@ -186,7 +186,7 @@ where
             // 如果当前没有活跃节点，图执行结束
             if current_nodes.is_empty() {
                 // Save checkpoint at end
-                if let Some(config) = config
+                if let Some(thread_id) = &config.thread_id
                     && let Some(checkpointer) = &self.checkpointer
                 {
                     let checkpoint = Checkpoint {
@@ -194,7 +194,7 @@ where
                         next_nodes: Vec::new(),
                         pending_interrupt: None,
                     };
-                    if let Err(e) = checkpointer.put(config, &checkpoint).await {
+                    if let Err(e) = checkpointer.put(thread_id, &checkpoint).await {
                         tracing::error!("Failed to save checkpoint: {:?}", e);
                     }
                 }
@@ -208,7 +208,7 @@ where
                 .any(|n| self.interrupt_before.contains(n));
             if should_interrupt {
                 tracing::info!("Interrupting before nodes: {:?}", current_nodes);
-                if let Some(config) = config
+                if let Some(thread_id) = &config.thread_id
                     && let Some(checkpointer) = &self.checkpointer
                 {
                     // Save checkpoint with pending interrupt
@@ -223,7 +223,7 @@ where
                             "Interrupt Before",
                         )),
                     };
-                    if let Err(e) = checkpointer.put(config, &checkpoint).await {
+                    if let Err(e) = checkpointer.put(thread_id, &checkpoint).await {
                         tracing::error!("Failed to save interrupt checkpoint: {:?}", e);
                     }
                 }
@@ -256,7 +256,7 @@ where
             all_next_nodes.sort_unstable();
             all_next_nodes.dedup();
 
-            if let Some(config) = config
+            if let Some(thread_id) = &config.thread_id
                 && let Some(checkpointer) = &self.checkpointer
             {
                 let next_node_strs = all_next_nodes
@@ -268,7 +268,7 @@ where
                     next_nodes: next_node_strs,
                     pending_interrupt: None,
                 };
-                if let Err(e) = checkpointer.put(config, &checkpoint).await {
+                if let Err(e) = checkpointer.put(thread_id, &checkpoint).await {
                     tracing::error!("Failed to save checkpoint: {:?}", e);
                 }
             }
@@ -280,7 +280,7 @@ where
                 .any(|n| self.interrupt_after.contains(n));
             if should_interrupt_after {
                 tracing::info!("Interrupting after nodes: {:?}", current_nodes);
-                if let Some(config) = config
+                if let Some(thread_id) = &config.thread_id
                     && let Some(checkpointer) = &self.checkpointer
                 {
                     // Save checkpoint with pending interrupt.
@@ -298,7 +298,7 @@ where
                             "Interrupt After",
                         )),
                     };
-                    if let Err(e) = checkpointer.put(config, &checkpoint).await {
+                    if let Err(e) = checkpointer.put(thread_id, &checkpoint).await {
                         tracing::error!("Failed to save interrupt checkpoint: {:?}", e);
                     }
                 }
@@ -336,7 +336,7 @@ where
     pub fn stream<'a>(
         &'a self,
         mut state: S,
-        config: Option<&'a RunnableConfig>,
+        config: &'a RunnableConfig,
         max_steps: usize,
         strategy: RunStrategy,
     ) -> EventStream<'a, Ev> {
@@ -350,12 +350,12 @@ where
 
         let stream = async_stream::stream! {
             // 尝试恢复 (逻辑同 run)
-            if let Some(config) = config && let Some(checkpointer) = checkpointer {
+            if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                     // async block in stream is tricky, but here we are in async_stream! macro
                     // Note: get_state needs S: DeserializeOwned.
                     // S is bound in impl block.
-                    if let Ok(Some(checkpoint)) = checkpointer.get(config).await {
-                        tracing::info!("Resuming from checkpoint: {:?}", config);
+                    if let Ok(Some(checkpoint)) = checkpointer.get(thread_id).await {
+                        tracing::info!("Resuming from checkpoint: {:?}", thread_id);
                         state = checkpoint.state;
                         if !checkpoint.next_nodes.is_empty() {
                             // 使用标签注册表进行快速查找（O(1) 而不是 O(n)）
@@ -377,13 +377,13 @@ where
             for _ in 0..max_steps {
                 if current_nodes.is_empty() {
                     // End of graph, save final state
-                    if let Some(config) = config && let Some(checkpointer) = checkpointer {
+                    if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                             let checkpoint = Checkpoint {
                                 state: state.clone(),
                                 next_nodes: Vec::new(),
                                 pending_interrupt: None,
                             };
-                            let _ = checkpointer.put(config, &checkpoint).await;
+                            let _ = checkpointer.put(thread_id, &checkpoint).await;
                         }
                     break;
                 }
@@ -392,14 +392,14 @@ where
                 let should_interrupt = current_nodes.iter().any(|n| self.interrupt_before.contains(n));
                 if should_interrupt {
                     tracing::info!("Interrupting before nodes: {:?}", current_nodes);
-                    if let Some(config) = config && let Some(checkpointer) = checkpointer {
+                    if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = current_nodes.iter().map(|n| n.as_str().to_owned()).collect();
                         let checkpoint = Checkpoint {
                             state: state.clone(),
                             next_nodes: next_node_strs,
                             pending_interrupt: Some(crate::interrupt::Interrupt::confirmation("Interrupt Before")),
                         };
-                         let _ = checkpointer.put(config, &checkpoint).await;
+                        let _ = checkpointer.put(thread_id, &checkpoint).await;
                     }
                     break;
                 }
@@ -458,28 +458,28 @@ where
                 all_next_nodes.dedup();
 
                 // Save Checkpoint
-                if let Some(config) = config && let Some(checkpointer) = checkpointer {
+                if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = all_next_nodes.iter().map(|n| n.as_str().to_owned()).collect();
                         let checkpoint = Checkpoint {
                             state: state.clone(),
                             next_nodes: next_node_strs,
                             pending_interrupt: None,
                         };
-                        let _ = checkpointer.put(config, &checkpoint).await;
+                        let _ = checkpointer.put(thread_id, &checkpoint).await;
                     }
 
                 // check interrupt_after
                 let should_interrupt_after = current_nodes.iter().any(|n| self.interrupt_after.contains(n));
                 if should_interrupt_after {
-                     tracing::info!("Interrupting after nodes: {:?}", current_nodes);
-                     if let Some(config) = config && let Some(checkpointer) = checkpointer {
+                    tracing::info!("Interrupting after nodes: {:?}", current_nodes);
+                    if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = all_next_nodes.iter().map(|n| n.as_str().to_owned()).collect();
                         let checkpoint = Checkpoint {
                             state: state.clone(),
                             next_nodes: next_node_strs,
                             pending_interrupt: Some(crate::interrupt::Interrupt::confirmation("Interrupt After")),
                         };
-                         let _ = checkpointer.put(config, &checkpoint).await;
+                        let _ = checkpointer.put(thread_id, &checkpoint).await;
                     }
                     break;
                 }
@@ -510,43 +510,6 @@ where
 
         EventStream::new(stream)
     }
-
-    /// 执行直到卡住
-    pub async fn run_until_stuck(
-        &self,
-        mut state: S,
-        max_steps: usize,
-    ) -> Result<(S, Vec<InternedGraphLabel>), GraphError<E>> {
-        let mut current_nodes = vec![self.entry];
-
-        for _ in 0..max_steps {
-            // Parallel execution
-            let futures = current_nodes
-                .iter()
-                .map(|&node| self.graph.run_once(node, &state, NodeContext::empty()));
-            let results = join_all(futures).await;
-
-            let mut all_next_nodes = Vec::new();
-            for result in results {
-                let (update, next) = result?;
-                state = (self.reducer)(state, update);
-                all_next_nodes.extend(next);
-            }
-
-            all_next_nodes.sort_unstable();
-            all_next_nodes.dedup();
-
-            if all_next_nodes.is_empty() {
-                return Ok((state, current_nodes));
-            }
-
-            // 如果不是线性流（即产生了分支），run_until_stuck 的定义可能比较模糊
-            // 这里我们假设它总是尽可能往下走，支持并行
-            current_nodes = all_next_nodes;
-        }
-
-        Ok((state, current_nodes))
-    }
 }
 
 /// StateGraph 运行器（用于逐步执行）
@@ -564,50 +527,6 @@ impl<'g, S, U, E: Debug, Ev: Debug> StateGraphRunner<'g, S, U, E, Ev> {
             current_nodes: vec![state_graph.entry],
             state: initial_state,
         }
-    }
-
-    /// 执行一步（使用 Sync 模式）
-    pub async fn step(&mut self) -> Result<Vec<InternedGraphLabel>, GraphError<E>>
-    where
-        S: Send + Sync + Clone + 'static,
-        U: Send + Sync + 'static,
-        E: Send + Sync + 'static,
-        Ev: Send + Sync + 'static,
-    {
-        if self.current_nodes.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let futures = self.current_nodes.iter().map(|&node| {
-            self.state_graph
-                .graph
-                .run_once(node, &self.state, NodeContext::empty())
-        });
-
-        let results = join_all(futures).await;
-
-        let mut all_next_nodes = Vec::new();
-
-        // 这里的 state 更新需要注意：
-        // step() 可能会被多次调用，我们需要更新 self.state
-        let mut new_state = self.state.clone();
-
-        for result in results {
-            let (update, next) = result?;
-            new_state = (self.state_graph.reducer)(new_state, update);
-            all_next_nodes.extend(next);
-        }
-
-        self.state = new_state;
-
-        all_next_nodes.sort_unstable();
-        all_next_nodes.dedup();
-
-        if !all_next_nodes.is_empty() {
-            self.current_nodes = all_next_nodes.clone();
-        }
-
-        Ok(all_next_nodes)
     }
 }
 
@@ -663,8 +582,11 @@ mod tests {
 
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::B, TestLabel::C);
-
-        let (final_state, _) = sg.run(0, None, 10, RunStrategy::PickFirst).await.unwrap();
+        let config = RunnableConfig::default();
+        let (final_state, _) = sg
+            .run(0, &config, 10, RunStrategy::PickFirst)
+            .await
+            .unwrap();
 
         assert_eq!(final_state, 3);
     }
@@ -688,7 +610,11 @@ mod tests {
             }
         });
 
-        let (final_state, _) = sg.run(0, None, 10, RunStrategy::PickFirst).await.unwrap();
+        let config = RunnableConfig::default();
+        let (final_state, _) = sg
+            .run(0, &config, 10, RunStrategy::PickFirst)
+            .await
+            .unwrap();
 
         assert_eq!(final_state, 2);
     }
@@ -710,40 +636,13 @@ mod tests {
                 Vec::new()
             }
         });
-
-        let (final_state, _) = sg.run(-1, None, 10, RunStrategy::PickFirst).await.unwrap();
+        let config = RunnableConfig::default();
+        let (final_state, _) = sg
+            .run(-1, &config, 10, RunStrategy::PickFirst)
+            .await
+            .unwrap();
 
         assert_eq!(final_state, 0);
-    }
-
-    #[tokio::test]
-    async fn state_graph_runner_steps_through_linear_chain() {
-        let mut sg: StateGraph<i32, i32, NodeError, ()> =
-            StateGraph::new(TestLabel::A, |_, update| update);
-
-        sg.add_node(TestLabel::A, AddOne);
-        sg.add_node(TestLabel::B, AddOne);
-        sg.add_node(TestLabel::C, AddOne);
-
-        sg.add_edge(TestLabel::A, TestLabel::B);
-        sg.add_edge(TestLabel::B, TestLabel::C);
-
-        let mut runner = StateGraphRunner::new(&sg, 0);
-
-        let next1 = runner.step().await.unwrap();
-        assert_eq!(runner.state, 1);
-        assert_eq!(runner.current_nodes, vec![TestLabel::B.intern()]);
-        assert_eq!(next1, vec![TestLabel::B.intern()]);
-
-        let next2 = runner.step().await.unwrap();
-        assert_eq!(runner.state, 2);
-        assert_eq!(runner.current_nodes, vec![TestLabel::C.intern()]);
-        assert_eq!(next2, vec![TestLabel::C.intern()]);
-
-        let next3 = runner.step().await.unwrap();
-        assert_eq!(runner.state, 3);
-        assert_eq!(runner.current_nodes, vec![TestLabel::C.intern()]);
-        assert!(next3.is_empty());
     }
 
     #[tokio::test]
@@ -758,8 +657,9 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
+        let config = RunnableConfig::default();
         let (final_state, final_nodes) = sg
-            .run(0, None, 10, RunStrategy::StopAtNonLinear)
+            .run(0, &config, 10, RunStrategy::StopAtNonLinear)
             .await
             .unwrap();
 
@@ -782,7 +682,12 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
-        let (final_state, _) = sg.run(0, None, 10, RunStrategy::PickFirst).await.unwrap();
+        let config = RunnableConfig::default();
+
+        let (final_state, _) = sg
+            .run(0, &config, 10, RunStrategy::PickFirst)
+            .await
+            .unwrap();
 
         // B and C are candidates. PickFirst picks B (because B comes first in sort order or insertion order?)
         // HashMap iteration order is random. But we sort_unstable() before dedup.
@@ -802,7 +707,8 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
-        let (final_state, _) = sg.run(0, None, 10, RunStrategy::PickLast).await.unwrap();
+        let config = RunnableConfig::default();
+        let (final_state, _) = sg.run(0, &config, 10, RunStrategy::PickLast).await.unwrap();
 
         assert_eq!(final_state, 2);
         // Sorted: B, C. Last is C.
@@ -836,7 +742,8 @@ mod tests {
                 update.parse::<i32>().unwrap()
             });
         sg.add_node(TestLabel::A, StringNode);
-        let (final_state, _) = sg.run(0, None, 1, RunStrategy::PickFirst).await.unwrap();
+        let config = RunnableConfig::default();
+        let (final_state, _) = sg.run(0, &config, 1, RunStrategy::PickFirst).await.unwrap();
         assert_eq!(final_state, 1);
     }
 
@@ -867,8 +774,8 @@ mod tests {
         // Parallel strategy applies reducer sequentially for updates.
         // reducer(1, 2) -> 3.
         // reducer(3, 2) -> 5.
-
-        let (final_state, _) = sg.run(0, None, 10, RunStrategy::Parallel).await.unwrap();
+        let config = RunnableConfig::default();
+        let (final_state, _) = sg.run(0, &config, 10, RunStrategy::Parallel).await.unwrap();
 
         assert_eq!(final_state, 5);
     }
@@ -930,9 +837,9 @@ mod tests {
         // Step 1: A runs. Output "A". State ["A"]. Next [B, C].
         // Step 2: B, C run. Output "B", "C". State ["A", "B", "C"]. Next [D, E].
         // Step 3: D, E run. Output "D", "E". State ["A", "B", "C", "D", "E"]. Next [].
-
+        let config = RunnableConfig::default();
         let (final_state, _) = sg
-            .run(Vec::new(), None, 10, RunStrategy::Parallel)
+            .run(Vec::new(), &config, 10, RunStrategy::Parallel)
             .await
             .unwrap();
 

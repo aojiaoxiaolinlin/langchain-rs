@@ -15,19 +15,18 @@ pub struct NodeContext<'a> {
     /// 共享存储
     pub store: Option<Arc<dyn BaseStore>>,
     /// 运行时配置
-    pub config: Option<&'a RunnableConfig>,
+    pub config: &'a RunnableConfig,
 }
 
 impl<'a> NodeContext<'a> {
-    pub fn new(store: Option<Arc<dyn BaseStore>>, config: Option<&'a RunnableConfig>) -> Self {
-        Self { store, config }
-    }
-
-    pub fn empty() -> Self {
+    pub fn from_config(config: &'a RunnableConfig) -> Self {
         Self {
             store: None,
-            config: None,
+            config,
         }
+    }
+    pub fn new(store: Option<Arc<dyn BaseStore>>, config: &'a RunnableConfig) -> Self {
+        Self { store, config }
     }
 }
 
