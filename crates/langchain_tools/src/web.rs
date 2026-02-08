@@ -29,9 +29,15 @@ pub struct SearchResult {
 /// 使用 DuckDuckGo 进行 Web 搜索
 #[tool(
     description = "Search the web for information using DuckDuckGo",
-    args(query = "Search query", max_results = "Maximum number of results (default: 5)")
+    args(
+        query = "Search query",
+        max_results = "Maximum number of results (default: 5)"
+    )
 )]
-pub async fn search_web(query: String, max_results: Option<usize>) -> Result<Vec<SearchResult>, WebSearchError> {
+pub async fn search_web(
+    query: String,
+    max_results: Option<usize>,
+) -> Result<Vec<SearchResult>, WebSearchError> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (compatible; LangChainBot/1.0)")
         .build()?;
@@ -83,9 +89,11 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[ignore]  // 需要网络连接
+    #[ignore] // 需要网络连接
     async fn test_search_web() {
-        let results = search_web("Rust programming language".to_string(), Some(3)).await.unwrap();
+        let results = search_web("Rust programming language".to_string(), Some(3))
+            .await
+            .unwrap();
         assert!(!results.is_empty());
         assert!(results.len() <= 3);
 
