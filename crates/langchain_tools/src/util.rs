@@ -80,7 +80,14 @@ fn eval_with_validation(expr: &str) -> Result<f64, UtilError> {
 
     // 验证表达式只包含合法字符
     for c in expr.chars() {
-        let is_valid = c.is_ascii_digit() || c == '.' || c == '+' || c == '-' || c == '*' || c == '/' || c == '(' || c == ')';
+        let is_valid = c.is_ascii_digit()
+            || c == '.'
+            || c == '+'
+            || c == '-'
+            || c == '*'
+            || c == '/'
+            || c == '('
+            || c == ')';
         if !is_valid {
             return Err(UtilError::Calculation(format!("Invalid character: {}", c)));
         }
@@ -99,7 +106,11 @@ fn parse_expression_full(expr: &str) -> Result<f64, UtilError> {
         let op = rest.chars().next().unwrap();
         if op == '+' || op == '-' {
             let right = parse_expression_full(&rest[1..])?;
-            return Ok(if op == '+' { left + right } else { left - right });
+            return Ok(if op == '+' {
+                left + right
+            } else {
+                left - right
+            });
         }
     }
 
@@ -136,12 +147,15 @@ fn parse_factor_with_rest(expr: &str) -> Result<(f64, &str), UtilError> {
     let expr = expr.trim_start();
 
     if expr.is_empty() {
-        return Err(UtilError::Calculation("Unexpected end of expression".to_string()));
+        return Err(UtilError::Calculation(
+            "Unexpected end of expression".to_string(),
+        ));
     }
 
     // 处理括号
     if expr.starts_with('(') {
-        let closing = expr.find(')')
+        let closing = expr
+            .find(')')
             .ok_or_else(|| UtilError::Calculation("Unclosed parenthesis".to_string()))?;
 
         let inner = &expr[1..closing];
@@ -180,9 +194,18 @@ mod tests {
     async fn test_eval_expression() {
         // 测试表达式计算
         assert_eq!(eval_expression("1 + 2".to_string()).await.unwrap(), 3.0);
-        assert_eq!(eval_expression("2 * 3 + 4".to_string()).await.unwrap(), 10.0);
-        assert_eq!(eval_expression("(1 + 2) * 3".to_string()).await.unwrap(), 9.0);
-        assert_eq!(eval_expression("10 / 2 - 1".to_string()).await.unwrap(), 4.0);
+        assert_eq!(
+            eval_expression("2 * 3 + 4".to_string()).await.unwrap(),
+            10.0
+        );
+        assert_eq!(
+            eval_expression("(1 + 2) * 3".to_string()).await.unwrap(),
+            9.0
+        );
+        assert_eq!(
+            eval_expression("10 / 2 - 1".to_string()).await.unwrap(),
+            4.0
+        );
     }
 
     #[tokio::test]
@@ -191,7 +214,9 @@ mod tests {
         let time = get_current_time(None).await.unwrap();
         assert!(!time.is_empty());
 
-        let time_formatted = get_current_time(Some("%Y-%m-%d".to_string())).await.unwrap();
+        let time_formatted = get_current_time(Some("%Y-%m-%d".to_string()))
+            .await
+            .unwrap();
         // 简单检查格式：应该包含 3 个 '-'
         assert_eq!(time_formatted.chars().filter(|&c| c == '-').count(), 2);
         assert!(time_formatted.len() == 10); // YYYY-MM-DD 格式长度

@@ -27,11 +27,13 @@
 //! # }
 //! ```
 
-pub mod web;
 pub mod file;
 pub mod util;
+pub mod web;
 
 // 重新导出常用工具和类型
-pub use web::{search_web, SearchResult, WebSearchError};
-pub use file::{read_file, write_file, list_directory, delete_file, create_directory, FileInfo, FileToolError};
-pub use util::{get_current_time, calculate, eval_expression, UtilError};
+pub use file::{
+    FileInfo, FileToolError, create_directory, delete_file, list_directory, read_file, write_file,
+};
+pub use util::{UtilError, calculate, eval_expression, get_current_time};
+pub use web::{SearchResult, WebSearchError, search_web};
