@@ -1,10 +1,9 @@
 use langchain::ReactAgent;
 use langchain_core::message::Message;
 use langchain_openai::ChatOpenAIBuilder;
-use langgraph::checkpoint::MemorySaver;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{env, sync::Arc};
+use std::env;
 use tracing_subscriber::EnvFilter;
 
 const BASE_URL: &str = "https://api.siliconflow.cn/v1";
@@ -28,10 +27,7 @@ async fn main() {
     let api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
     let model = ChatOpenAIBuilder::from_base(MODEL, BASE_URL, api_key.as_str()).build();
 
-    let checkpointer = Arc::new(MemorySaver::new());
-
     let agent = ReactAgent::builder(model)
-        .with_checkpointer(checkpointer)
         .with_system_prompt(r#"分析用户的问题，提取出用户的姓名和年龄，使用json格式返回 如 {"name": "张三", "age": 18}"#)
         .build();
 
