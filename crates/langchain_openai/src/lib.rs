@@ -58,7 +58,7 @@ impl ChatModel for ChatOpenAI {
             request.stop = Some(stop.join(", "));
         }
 
-        if let Some(format) = &options.response_format {
+        if let Some(format) = options.response_format {
             request.response_format = Some(format.clone());
         }
 

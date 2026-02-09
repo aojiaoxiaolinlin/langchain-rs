@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt, future::join_all};
 use langchain_core::{
     message::{FunctionCall, Message, ToolCall},
-    request::{FormatType, ToolSpec},
+    request::{FormatType, ResponseFormat, ToolSpec},
     state::{
         AgentState, ChatCompletion, ChatModel, ChatStreamEvent, InvokeOptions, MessagesState,
         RegisteredTool, ToolFn,
@@ -19,6 +19,7 @@ use langgraph::{
     state_graph::RunStrategy,
     state_graph::StateGraph,
 };
+use schemars::JsonSchema;
 use thiserror::Error;
 
 pub struct LlmNode<M>
@@ -74,21 +75,7 @@ where
             },
             temperature: self.temperature,
             max_tokens: self.max_tokens,
-            response_format: if let Some(mode) = &context.config.mode {
-                match mode {
-                    FormatType::JsonSchema => Some(langchain_core::request::ResponseFormat {
-                        format_type: langchain_core::request::FormatType::JsonSchema,
-                        json_schema: None,
-                    }),
-                    FormatType::JsonObject => Some(langchain_core::request::ResponseFormat {
-                        format_type: langchain_core::request::FormatType::JsonObject,
-                        json_schema: None,
-                    }),
-                    _ => None,
-                }
-            } else {
-                None
-            },
+            response_format: context.config.response_format.as_ref(),
             ..Default::default()
         };
         let completion: ChatCompletion = self
@@ -470,11 +457,11 @@ impl ReactAgent {
         let config = thread_id.map_or(
             RunnableConfig {
                 thread_id: None,
-                mode: None,
+                response_format: None,
             },
             |thread_id| RunnableConfig {
                 thread_id: Some(thread_id),
-                mode: None,
+                response_format: None,
             },
         );
 
@@ -496,16 +483,35 @@ impl ReactAgent {
         thread_id: Option<String>,
     ) -> Result<AgentState<MessagesState, S>, AgentError>
     where
-        S: serde::de::DeserializeOwned,
+        S: serde::de::DeserializeOwned + JsonSchema,
     {
+        let mode = FormatType::JsonObject;
+
+        let response_format = match mode {
+            FormatType::JsonSchema => {
+                let schema = serde_json::to_string(&schemars::schema_for!(S)).map_err(|e| {
+                    AgentError::StructuredOutput(format!("Failed to serialize schema: {}", e))
+                })?;
+                Some(ResponseFormat {
+                    format_type: FormatType::JsonSchema,
+                    json_schema: Some(schema),
+                })
+            }
+            FormatType::JsonObject => Some(ResponseFormat {
+                format_type: FormatType::JsonObject,
+                json_schema: None,
+            }),
+            _ => None,
+        };
+
         let config = thread_id.map_or(
             RunnableConfig {
                 thread_id: None,
-                mode: Some(FormatType::JsonObject),
+                response_format: response_format.clone(),
             },
             |thread_id| RunnableConfig {
                 thread_id: Some(thread_id),
-                mode: Some(FormatType::JsonObject),
+                response_format,
             },
         );
 
@@ -543,11 +549,11 @@ impl ReactAgent {
         let config = thread_id.map_or(
             RunnableConfig {
                 thread_id: None,
-                mode: None,
+                response_format: None,
             },
             |thread_id| RunnableConfig {
                 thread_id: Some(thread_id),
-                mode: None,
+                response_format: None,
             },
         );
 

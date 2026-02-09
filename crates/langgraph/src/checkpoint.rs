@@ -1,16 +1,16 @@
 use crate::interrupt::Interrupt;
 use async_trait::async_trait;
-use langchain_core::request::FormatType;
+use langchain_core::request::ResponseFormat;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 /// 运行配置，用于标识 Checkpoint 的唯一性（如线程ID）
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RunnableConfig {
     /// 线程 ID，用于隔离不同的对话或执行流
     pub thread_id: Option<String>,
-    pub mode: Option<FormatType>,
+    pub response_format: Option<ResponseFormat>,
 }
 
 /// 检查点数据结构，包含业务状态和执行流位置
@@ -107,7 +107,7 @@ mod tests {
         let saver = MemorySaver::new();
         let config = RunnableConfig {
             thread_id: Some("thread-1".to_owned()),
-            mode: None,
+            response_format: None,
         };
 
         let state = TestState {
@@ -143,11 +143,11 @@ mod tests {
         let saver = MemorySaver::new();
         let config1 = RunnableConfig {
             thread_id: Some("thread-1".to_owned()),
-            mode: None,
+            response_format: None,
         };
         let config2 = RunnableConfig {
             thread_id: Some("thread-2".to_owned()),
-            mode: None,
+            response_format: None,
         };
 
         Checkpointer::<i32>::put(

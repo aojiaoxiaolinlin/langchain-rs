@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::{
     message::{Message, ToolCall},
-    request::ToolSpec,
+    request::{ResponseFormat, ToolSpec},
     response::Usage,
 };
 
@@ -24,7 +24,7 @@ pub struct InvokeOptions<'a> {
     /// 停止序列
     pub stop: Option<&'a [String]>,
     /// 响应格式
-    pub response_format: Option<crate::request::ResponseFormat>,
+    pub response_format: Option<&'a ResponseFormat>,
     /// 工具选择 (e.g. "auto", "none", "required", or specific function name)
     pub tool_choice: Option<String>,
 }

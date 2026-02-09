@@ -11,7 +11,9 @@ const MODEL: &str = "deepseek-ai/DeepSeek-V3.2";
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct NameResult {
+    #[schemars(description = "用户的姓名")]
     name: String,
+    #[schemars(description = "用户的年龄")]
     age: u8,
 }
 
