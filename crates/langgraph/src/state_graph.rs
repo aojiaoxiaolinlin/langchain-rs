@@ -1,5 +1,8 @@
 use crate::{
-    checkpoint::{Checkpoint, Checkpointer, RunnableConfig},
+    checkpoint::{
+        CheckpointType, RunnableConfig,
+        checkpoint_struct_api::{Checkpoint, CheckpointMetadata, Checkpointer},
+    },
     event::GraphEvent,
     graph::{Graph, GraphError},
     label::{GraphLabel, InternedGraphLabel},
@@ -156,75 +159,53 @@ where
         let mut current_nodes = vec![self.entry];
 
         // 尝试从 Checkpoint 恢复
-        // if let Some(config) = config
-        //     && let Some(checkpointer) = &self.checkpointer
-        //     && let Ok(Some(checkpoint)) = checkpointer.get_state::<S>(config).await
-        // {
-        //     tracing::info!("Resuming from checkpoint: {:?}", config);
-        //     state = checkpoint.state;
-        //     // 如果 checkpoint 中有下一步节点，则从那里继续
+        if let Some(checkpointer) = &self.checkpointer
+            && let Some(thread_id) = &config.thread_id
+        {
+            tracing::info!("Resuming from checkpoint: {:?}", config);
+            if let Ok(checkpoint) = checkpointer.get(thread_id).await {
+                if let Some(checkpoint) = checkpoint {
+                    // 如果 checkpoint 中有下一步节点，则从那里继续
 
-        //     if !checkpoint.next_nodes.is_empty() {
-        //         // 使用标签注册表进行快速查找（O(1) 而不是 O(n)）
-        //         use crate::label_registry::str_to_label;
+                    if !checkpoint.next_nodes.is_empty() {
+                        // 使用标签注册表进行快速查找（O(1) 而不是 O(n)）
+                        use crate::label_registry::str_to_label;
 
-        //         let restored_nodes: Vec<_> = checkpoint
-        //             .next_nodes
-        //             .into_iter()
-        //             .filter_map(|node_str| str_to_label(&node_str))
-        //             .collect();
+                        let restored_nodes: Vec<_> = checkpoint
+                            .next_nodes
+                            .into_iter()
+                            .filter_map(|node_str| str_to_label(&node_str))
+                            .collect();
 
-        //         if !restored_nodes.is_empty() {
-        //             current_nodes = restored_nodes;
-        //         } else {
-        //             tracing::warn!("No nodes could be restored from checkpoint");
-        //         }
-        //     }
-        // }
+                        if !restored_nodes.is_empty() {
+                            current_nodes = restored_nodes;
+                        } else {
+                            tracing::warn!("No nodes could be restored from checkpoint");
+                        }
+                    }
+                }
+            }
+        }
 
-        for _ in 0..max_steps {
+        for step in 0..max_steps {
             // 如果当前没有活跃节点，图执行结束
             if current_nodes.is_empty() {
                 // Save checkpoint at end
                 if let Some(thread_id) = &config.thread_id
                     && let Some(checkpointer) = &self.checkpointer
                 {
-                    let checkpoint = Checkpoint {
-                        state: state.clone(),
-                        next_nodes: Vec::new(),
-                        pending_interrupt: None,
+                    let parent_id = if let Ok(e) = checkpointer.get(thread_id).await {
+                        match e {
+                            Some(e) => e.metadata.parent_id,
+                            None => None,
+                        }
+                    } else {
+                        None
                     };
-                    if let Err(e) = checkpointer.put(thread_id, &checkpoint).await {
+                    let checkpoint =
+                        Checkpoint::new_final(state.clone(), thread_id.clone(), step, parent_id);
+                    if let Err(e) = checkpointer.put(&checkpoint).await {
                         tracing::error!("Failed to save checkpoint: {:?}", e);
-                    }
-                }
-                return Ok((state, current_nodes));
-            }
-
-            // check interrupt_before
-            // If any of the current_nodes are in interrupt_before list, we stop.
-            let should_interrupt = current_nodes
-                .iter()
-                .any(|n| self.interrupt_before.contains(n));
-            if should_interrupt {
-                tracing::info!("Interrupting before nodes: {:?}", current_nodes);
-                if let Some(thread_id) = &config.thread_id
-                    && let Some(checkpointer) = &self.checkpointer
-                {
-                    // Save checkpoint with pending interrupt
-                    let next_node_strs = current_nodes
-                        .iter()
-                        .map(|n| n.as_str().to_owned())
-                        .collect();
-                    let checkpoint = Checkpoint {
-                        state: state.clone(),
-                        next_nodes: next_node_strs,
-                        pending_interrupt: Some(crate::interrupt::Interrupt::confirmation(
-                            "Interrupt Before",
-                        )),
-                    };
-                    if let Err(e) = checkpointer.put(thread_id, &checkpoint).await {
-                        tracing::error!("Failed to save interrupt checkpoint: {:?}", e);
                     }
                 }
                 return Ok((state, current_nodes));
@@ -263,47 +244,24 @@ where
                     .iter()
                     .map(|n| n.as_str().to_owned())
                     .collect();
-                let checkpoint = Checkpoint {
-                    state: state.clone(),
-                    next_nodes: next_node_strs,
-                    pending_interrupt: None,
+                let parent_id = if let Ok(e) = checkpointer.get(thread_id).await {
+                    match e {
+                        Some(e) => e.metadata.parent_id,
+                        None => None,
+                    }
+                } else {
+                    None
                 };
-                if let Err(e) = checkpointer.put(thread_id, &checkpoint).await {
+                let checkpoint = Checkpoint::new_auto_with_next_nodes(
+                    state.clone(),
+                    thread_id.clone(),
+                    step,
+                    next_node_strs,
+                    parent_id,
+                );
+                if let Err(e) = checkpointer.put(&checkpoint).await {
                     tracing::error!("Failed to save checkpoint: {:?}", e);
                 }
-            }
-
-            // check interrupt_after
-            // Check if any of the EXECUTED nodes (current_nodes) are in interrupt_after
-            let should_interrupt_after = current_nodes
-                .iter()
-                .any(|n| self.interrupt_after.contains(n));
-            if should_interrupt_after {
-                tracing::info!("Interrupting after nodes: {:?}", current_nodes);
-                if let Some(thread_id) = &config.thread_id
-                    && let Some(checkpointer) = &self.checkpointer
-                {
-                    // Save checkpoint with pending interrupt.
-                    // The 'next_nodes' are already calculated in 'all_next_nodes'.
-                    // We strictly want to pause BEFORE the next step.
-                    let next_node_strs = all_next_nodes
-                        .iter()
-                        .map(|n| n.as_str().to_owned())
-                        .collect();
-
-                    let checkpoint = Checkpoint {
-                        state: state.clone(),
-                        next_nodes: next_node_strs,
-                        pending_interrupt: Some(crate::interrupt::Interrupt::confirmation(
-                            "Interrupt After",
-                        )),
-                    };
-                    if let Err(e) = checkpointer.put(thread_id, &checkpoint).await {
-                        tracing::error!("Failed to save interrupt checkpoint: {:?}", e);
-                    }
-                }
-                // Return with the NEW state and NEXT nodes (so user knows where it's going)
-                return Ok((state, all_next_nodes));
             }
 
             if all_next_nodes.is_empty() {
@@ -374,16 +332,23 @@ where
                     }
                 }
 
-            for _ in 0..max_steps {
+            for step in 0..max_steps {
                 if current_nodes.is_empty() {
                     // End of graph, save final state
                     if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
-                            let checkpoint = Checkpoint {
-                                state: state.clone(),
-                                next_nodes: Vec::new(),
-                                pending_interrupt: None,
-                            };
-                            let _ = checkpointer.put(thread_id, &checkpoint).await;
+                        let parent_id = if let Ok(e) = checkpointer.get(thread_id).await {
+                            match e {
+                                Some(e) => e.metadata.parent_id,
+                                None => None,
+                            }
+                        } else {
+                            None
+                        };
+                        let checkpoint =
+                            Checkpoint::new_final(state.clone(), thread_id.clone(), step, parent_id);
+                        if let Err(e) = checkpointer.put(&checkpoint).await {
+                            tracing::error!("Failed to save checkpoint: {:?}", e);
+                        }
                         }
                     break;
                 }
@@ -394,12 +359,24 @@ where
                     tracing::info!("Interrupting before nodes: {:?}", current_nodes);
                     if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = current_nodes.iter().map(|n| n.as_str().to_owned()).collect();
-                        let checkpoint = Checkpoint {
-                            state: state.clone(),
-                            next_nodes: next_node_strs,
-                            pending_interrupt: Some(crate::interrupt::Interrupt::confirmation("Interrupt Before")),
+                        let parent_id = if let Ok(e) = checkpointer.get(thread_id).await {
+                            match e {
+                                Some(e) => e.metadata.parent_id,
+                                None => None,
+                            }
+                        } else {
+                            None
                         };
-                        let _ = checkpointer.put(thread_id, &checkpoint).await;
+                        let checkpoint = Checkpoint::new_auto_with_next_nodes(
+                            state.clone(),
+                            thread_id.clone(),
+                            step,
+                            next_node_strs,
+                            parent_id,
+                        );
+                        if let Err(e) = checkpointer.put(&checkpoint).await {
+                            tracing::error!("Failed to save checkpoint: {:?}", e);
+                        }
                     }
                     break;
                 }
@@ -460,12 +437,24 @@ where
                 // Save Checkpoint
                 if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = all_next_nodes.iter().map(|n| n.as_str().to_owned()).collect();
-                        let checkpoint = Checkpoint {
-                            state: state.clone(),
-                            next_nodes: next_node_strs,
-                            pending_interrupt: None,
+                        let parent_id = if let Ok(e) = checkpointer.get(thread_id).await {
+                            match e {
+                                Some(e) => e.metadata.parent_id,
+                                None => None,
+                            }
+                        } else {
+                            None
                         };
-                        let _ = checkpointer.put(thread_id, &checkpoint).await;
+                        let checkpoint = Checkpoint::new_auto_with_next_nodes(
+                            state.clone(),
+                            thread_id.clone(),
+                            step,
+                            next_node_strs,
+                            parent_id,
+                        );
+                        if let Err(e) = checkpointer.put(&checkpoint).await {
+                            tracing::error!("Failed to save checkpoint: {:?}", e);
+                        }
                     }
 
                 // check interrupt_after
@@ -474,12 +463,24 @@ where
                     tracing::info!("Interrupting after nodes: {:?}", current_nodes);
                     if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = all_next_nodes.iter().map(|n| n.as_str().to_owned()).collect();
-                        let checkpoint = Checkpoint {
-                            state: state.clone(),
-                            next_nodes: next_node_strs,
-                            pending_interrupt: Some(crate::interrupt::Interrupt::confirmation("Interrupt After")),
+                        let parent_id = if let Ok(e) = checkpointer.get(thread_id).await {
+                            match e {
+                                Some(e) => e.metadata.parent_id,
+                                None => None,
+                            }
+                        } else {
+                            None
                         };
-                        let _ = checkpointer.put(thread_id, &checkpoint).await;
+                        let checkpoint = Checkpoint::new_auto_with_next_nodes(
+                            state.clone(),
+                            thread_id.clone(),
+                            step,
+                            next_node_strs,
+                            parent_id,
+                        );
+                        if let Err(e) = checkpointer.put(&checkpoint).await {
+                            tracing::error!("Failed to save checkpoint: {:?}", e);
+                        }
                     }
                     break;
                 }
