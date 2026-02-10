@@ -316,7 +316,7 @@ where
                 }
             }
             CleanupPolicy::KeepDays(days) => {
-                let cutoff = (Utc::now() - chrono::Duration::days(*days)).timestamp();
+                let cutoff = (Utc::now() - chrono::Duration::days(*days)).timestamp_millis();
                 for (_, metadatas) in index.iter() {
                     for metadata in metadatas.iter() {
                         if metadata.created_at < cutoff {
@@ -410,7 +410,7 @@ mod tests {
                 id: Uuid::now_v7().to_string(),
                 parent_id: None,
                 thread_id: "thread-1".to_owned(),
-                created_at: Utc::now().timestamp(),
+                created_at: Utc::now().timestamp_millis(),
                 step: 1,
                 tags: HashMap::new(),
                 checkpoint_type: CheckpointType::Auto,
@@ -443,7 +443,7 @@ mod tests {
                 id: checkpoint_parent_id.clone(),
                 parent_id: None,
                 thread_id: "thread-1".to_owned(),
-                created_at: Utc::now().timestamp(),
+                created_at: Utc::now().timestamp_millis(),
                 step: 1,
                 tags: HashMap::new(),
                 checkpoint_type: CheckpointType::Auto,
@@ -460,7 +460,7 @@ mod tests {
                 id: checkpoint_child_id.clone(),
                 parent_id: Some(checkpoint_parent_id.clone()),
                 thread_id: "thread-1".to_owned(),
-                created_at: Utc::now().timestamp(),
+                created_at: Utc::now().timestamp_millis(),
                 step: 1,
                 tags: HashMap::new(),
                 checkpoint_type: CheckpointType::Auto,
