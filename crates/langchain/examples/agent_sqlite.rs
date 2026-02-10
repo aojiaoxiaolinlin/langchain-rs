@@ -28,7 +28,6 @@ async fn main() {
 
     let agent = ReactAgent::builder(model)
         .with_checkpointer(checkpointer)
-        // .with_system_prompt("你是一个猫娘AI助手，回答要简洁有趣，回答时带上猫娘的口癖，比如喵~")
         .with_system_prompt("你是一个聊天AI助手，回答要简洁有趣，要遵循 user 命令")
         .build();
 
