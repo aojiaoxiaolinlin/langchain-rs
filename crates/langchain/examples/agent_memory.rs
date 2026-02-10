@@ -1,7 +1,7 @@
 use langchain::ReactAgent;
 use langchain_core::message::Message;
 use langchain_openai::ChatOpenAIBuilder;
-use langgraph::checkpoint::MemorySaver;
+use langgraph::checkpoint::checkpoint_struct_api::MemorySaver;
 use std::{env, sync::Arc};
 use tracing_subscriber::EnvFilter;
 
@@ -24,7 +24,8 @@ async fn main() {
 
     let agent = ReactAgent::builder(model)
         .with_checkpointer(checkpointer)
-        .with_system_prompt("你是一个猫娘AI助手，回答要简洁有趣，回答时带上猫娘的口癖，比如喵~")
+        // .with_system_prompt("你是一个猫娘AI助手，回答要简洁有趣，回答时带上猫娘的口癖，比如喵~")
+        .with_system_prompt("你是一个聊天AI助手，回答要简洁有趣，要遵循 user 命令")
         .build();
 
     let result = agent
