@@ -97,7 +97,22 @@ impl<S> Checkpoint<S> {
             state: state,
             next_nodes,
             pending_interrupt: None,
-            metadata: CheckpointMetadata::new_final(thread_id.clone(), step, parent_id),
+            metadata: CheckpointMetadata::new_auto(thread_id.clone(), step, parent_id),
+        }
+    }
+    
+    /// 创建 `CheckpointType::Auto` 元数据
+    pub fn new_auto(
+        state: S,
+        thread_id: String,
+        step: usize,
+        parent_id: Option<String>,
+    ) -> Self {
+        Checkpoint {
+            state: state,
+            next_nodes:Vec::new(),
+            pending_interrupt: None,
+            metadata: CheckpointMetadata::new_auto(thread_id.clone(), step, parent_id),
         }
     }
 }

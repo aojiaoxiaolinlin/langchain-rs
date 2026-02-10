@@ -591,12 +591,11 @@ impl ReactAgent {
                 if let Some(system_prompt) = &self.system_prompt {
                     state.push_message_owned(Message::system(system_prompt.clone()));
                 }
-                // let checkpoint = Checkpoint {
-                //     state: state.clone(),
-                //     next_nodes: Vec::new(),
-                //     pending_interrupt: None,
-                // };
-                // checkpointer.put(thread_id, &checkpoint).await.unwrap();
+                let checkpoint =
+                    Checkpoint::new_auto(state.clone(), thread_id.clone(), 0, None);
+                if let Err(e) = checkpointer.put(&checkpoint).await {
+                    tracing::error!("Failed to save checkpoint: {:?}", e);
+                }
                 state
             }
         } else {
