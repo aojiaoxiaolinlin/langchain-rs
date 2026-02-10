@@ -19,8 +19,6 @@ pub struct CheckpointMetadata {
     pub created_at: i64,
     /// 执行步数
     pub step: usize,
-    // 执行的节点名称
-    // pub source_node: String,
     /// 用户自定义标签
     pub tags: HashMap<String, String>,
     /// 检查点类型
