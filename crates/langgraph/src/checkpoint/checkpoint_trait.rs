@@ -47,13 +47,13 @@ pub trait Checkpointer<S>: Send + Sync {
         &self,
         checkpoint_id: &CheckpointId,
     ) -> Result<Option<CheckpointMetadata>, CheckpointError>;
-    
+
     /// 获取指定检查点的元数据
     async fn get_metadata_parent_id(
         &self,
         checkpoint_id: &CheckpointId,
     ) -> Result<Option<String>, CheckpointError>;
-    
+
     /// 获取指定检查点的元数据
     // async fn get_metadata_parent_id_by_thread_id(
     //     &self,

@@ -1,8 +1,14 @@
 mod checkpoint_instantiation;
-mod checkpoint_trait;
 mod checkpoint_memory_saver;
+mod checkpoint_trait;
 
-use crate::{checkpoint::{checkpoint_instantiation::{Checkpoint, CheckpointMetadata}, checkpoint_trait::Checkpointer}, interrupt::Interrupt};
+use crate::{
+    checkpoint::{
+        checkpoint_instantiation::{Checkpoint, CheckpointMetadata},
+        checkpoint_trait::Checkpointer,
+    },
+    interrupt::Interrupt,
+};
 use async_trait::async_trait;
 use langchain_core::request::ResponseFormat;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -18,10 +24,10 @@ pub struct RunnableConfig {
     pub response_format: Option<ResponseFormat>,
 }
 
-pub mod checkpoint_struct_api{
+pub mod checkpoint_struct_api {
     pub use super::checkpoint_instantiation::*;
-    pub use super::checkpoint_trait::*;
     pub use super::checkpoint_memory_saver::*;
+    pub use super::checkpoint_trait::*;
 }
 
 /// 检查点 ID（唯一标识-uuidv7）

@@ -233,11 +233,11 @@ where
 
         Ok(None)
     }
-    
+
     async fn get_metadata_parent_id(
         &self,
         checkpoint_id: &CheckpointId,
-    ) -> Result<Option<String>, CheckpointError>{
+    ) -> Result<Option<String>, CheckpointError> {
         let index = self.metadata_index.read().await;
 
         for (_, metadatas) in index.iter() {
@@ -395,7 +395,7 @@ where
 mod tests {
     use super::*;
     use serde::Serialize;
-    
+
     #[tokio::test]
     async fn checkpoint_memory_saver_basic_flow() {
         use crate::checkpoint::CheckpointType;
@@ -433,7 +433,6 @@ mod tests {
     async fn checkpoint_memory_saver_multi_node_process() {
         use crate::checkpoint::CheckpointType;
         use uuid::*;
-        
 
         let saver = MemorySaver::new();
 
@@ -454,7 +453,7 @@ mod tests {
             next_nodes: vec!["Tool".to_string()],
             pending_interrupt: None,
         };
-        
+
         // 创建子检查点
         let checkpoint_child_id = Uuid::now_v7().to_string();
         let checkpoint_child = Checkpoint {
@@ -481,16 +480,35 @@ mod tests {
         let loaded: Option<Checkpoint<i32>> = saver.get("thread-1").await.unwrap();
         assert!(loaded.is_some());
         assert!(loaded.clone().unwrap().metadata.parent_id.clone().is_some());
-        assert_eq!(loaded.unwrap().metadata.parent_id.unwrap(), checkpoint_parent_id.clone());
-        
+        assert_eq!(
+            loaded.unwrap().metadata.parent_id.unwrap(),
+            checkpoint_parent_id.clone()
+        );
+
         // 根据 id 读取父checkpoint
-        let checkpoint_parent: Option<Checkpoint<i32>> = saver.get_by_id(&checkpoint_parent_id).await.unwrap();
+        let checkpoint_parent: Option<Checkpoint<i32>> =
+            saver.get_by_id(&checkpoint_parent_id).await.unwrap();
         assert!(checkpoint_parent.is_some());
-        assert_eq!(checkpoint_parent.unwrap().metadata.id, checkpoint_parent_id.clone());
+        assert_eq!(
+            checkpoint_parent.unwrap().metadata.id,
+            checkpoint_parent_id.clone()
+        );
         // 根据 id 读取子checkpoint
-        let checkpoint_child: Option<Checkpoint<i32>> = saver.get_by_id(&checkpoint_child_id).await.unwrap();
+        let checkpoint_child: Option<Checkpoint<i32>> =
+            saver.get_by_id(&checkpoint_child_id).await.unwrap();
         assert!(checkpoint_child.is_some());
-        assert_eq!(checkpoint_child.clone().unwrap().metadata.parent_id.unwrap(),checkpoint_parent_id.clone());
-        assert_eq!(checkpoint_child.unwrap().metadata.id, checkpoint_child_id.clone());
+        assert_eq!(
+            checkpoint_child
+                .clone()
+                .unwrap()
+                .metadata
+                .parent_id
+                .unwrap(),
+            checkpoint_parent_id.clone()
+        );
+        assert_eq!(
+            checkpoint_child.unwrap().metadata.id,
+            checkpoint_child_id.clone()
+        );
     }
 }

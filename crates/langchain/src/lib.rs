@@ -12,7 +12,10 @@ use langchain_core::{
     store::BaseStore,
 };
 use langgraph::{
-    checkpoint::{ RunnableConfig, checkpoint_struct_api::{Checkpoint, Checkpointer}},
+    checkpoint::{
+        RunnableConfig,
+        checkpoint_struct_api::{Checkpoint, Checkpointer},
+    },
     graph::GraphError,
     label::{BaseGraphLabel, GraphLabel},
     node::{EventSink, Node, NodeContext},
@@ -591,8 +594,7 @@ impl ReactAgent {
                 if let Some(system_prompt) = &self.system_prompt {
                     state.push_message_owned(Message::system(system_prompt.clone()));
                 }
-                let checkpoint =
-                    Checkpoint::new_auto(state.clone(), thread_id.clone(), 0, None);
+                let checkpoint = Checkpoint::new_auto(state.clone(), thread_id.clone(), 0, None);
                 if let Err(e) = checkpointer.put(&checkpoint).await {
                     tracing::error!("Failed to save checkpoint: {:?}", e);
                 }
