@@ -12,12 +12,14 @@ use langchain_core::{
     store::BaseStore,
 };
 use langgraph::{
-    checkpoint::{Checkpoint, Checkpointer, RunnableConfig},
+    checkpoint::{
+        RunnableConfig,
+        checkpoint_struct_api::{Checkpoint, Checkpointer},
+    },
     graph::GraphError,
     label::{BaseGraphLabel, GraphLabel},
     node::{EventSink, Node, NodeContext},
-    state_graph::RunStrategy,
-    state_graph::StateGraph,
+    state_graph::{RunStrategy, StateGraph},
 };
 use schemars::JsonSchema;
 use thiserror::Error;
@@ -592,12 +594,10 @@ impl ReactAgent {
                 if let Some(system_prompt) = &self.system_prompt {
                     state.push_message_owned(Message::system(system_prompt.clone()));
                 }
-                let checkpoint = Checkpoint {
-                    state: state.clone(),
-                    next_nodes: Vec::new(),
-                    pending_interrupt: None,
-                };
-                checkpointer.put(thread_id, &checkpoint).await.unwrap();
+                let checkpoint = Checkpoint::new_auto(state.clone(), thread_id.clone(), 0, None);
+                if let Err(e) = checkpointer.put(&checkpoint).await {
+                    tracing::error!("Failed to save checkpoint: {:?}", e);
+                }
                 state
             }
         } else {
@@ -731,7 +731,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_react_agent_with_checkpointer() {
-        use langgraph::checkpoint::MemorySaver;
+        use langgraph::checkpoint::checkpoint_struct_api::MemorySaver;
         use std::sync::Arc;
 
         let checkpointer = Arc::new(MemorySaver::new());
