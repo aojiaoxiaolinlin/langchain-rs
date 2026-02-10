@@ -779,20 +779,3 @@ where
         })
     }
 }
-
-// 辅助 trait 用于绑定
-// trait BindAll {
-//     fn bind_all(self, params: impl Iterator<Item = &str>) -> Self;
-// }
-
-// impl BindAll for sqlx::query::Query<'_, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'_>> {
-//     fn bind_all(mut self, params: impl Iterator<Item = &str>) -> Self {
-//         for param in params {
-//             self = self.bind(param);
-//         }
-//         self
-//     }
-// }
-
-#[cfg(test)]
-mod tests {}
