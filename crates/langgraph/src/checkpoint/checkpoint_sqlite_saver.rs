@@ -54,7 +54,19 @@ pub struct SqliteSaver {
 impl SqliteSaver {
     /// 创建新的 SQLite 检查点保存器
     pub async fn new(config: SqliteSaverConfig) -> Result<Self, CheckpointError> {
-        // 解析连接选项 此处create_if_missing只能自动创建 x.db，如果 path 存在未创建的文件夹，比如:data/x.db，会因为 data 文件夹不存在而 panic
+        // 自动 x.db 所需的创建文件夹
+        if let Some(parent) = Path::new(&config.database_path).parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    CheckpointError::Storage(format!(
+                        "Failed to
+          create database directory: {}",
+                        e
+                    ))
+                })?;
+            }
+        }
+        // 解析连接选项 此处create_if_missing只能自动创建 x.db
         let options = SqliteConnectOptions::from_str(&config.database_path)
             .map_err(|e| CheckpointError::Storage(format!("Invalid database path: {}", e)))?
             .create_if_missing(true);
