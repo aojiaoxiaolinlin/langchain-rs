@@ -33,18 +33,12 @@ async fn main() {
         .await
         .unwrap();
 
-    println!(
-        "---One---Result: {:?}",
-        result.last_message().unwrap().content()
-    );
+    println!("{}", result.last_message().unwrap().to_pretty());
 
     let result = agent
         .invoke(Message::user("你叫什么名字？"), Some("0001"))
         .await
         .unwrap();
 
-    println!(
-        "---Two---Result: {:?}",
-        result.last_message().unwrap().content()
-    );
+    println!("{}", result.last_message().unwrap().to_pretty());
 }
