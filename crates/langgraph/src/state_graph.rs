@@ -208,9 +208,7 @@ where
                 if let Some(thread_id) = &config.thread_id
                     && let Some(checkpointer) = &self.checkpointer
                 {
-                    let parent_id = checkpointer
-                        .get_metadata_parent_id_by_thread_id(thread_id)
-                        .await;
+                    let parent_id = checkpointer.get_metadata_id_by_thread_id(thread_id).await;
                     let checkpoint =
                         Checkpoint::new_final(state.clone(), thread_id.clone(), step, parent_id);
                     if let Err(e) = checkpointer.put(&checkpoint).await {
@@ -253,9 +251,7 @@ where
                     .iter()
                     .map(|n| n.as_str().to_owned())
                     .collect();
-                let parent_id = checkpointer
-                    .get_metadata_parent_id_by_thread_id(thread_id)
-                    .await;
+                let parent_id = checkpointer.get_metadata_id_by_thread_id(thread_id).await;
                 let checkpoint = Checkpoint::new_auto_with_next_nodes(
                     state.clone(),
                     thread_id.clone(),
@@ -353,7 +349,7 @@ where
                     // End of graph, save final state
                     if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let parent_id = checkpointer
-                            .get_metadata_parent_id_by_thread_id(thread_id)
+                            .get_metadata_id_by_thread_id(thread_id)
                             .await;
                         let checkpoint =
                             Checkpoint::new_final(state.clone(), thread_id.clone(), step, parent_id);
@@ -371,7 +367,7 @@ where
                     if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = current_nodes.iter().map(|n| n.as_str().to_owned()).collect();
                         let parent_id = checkpointer
-                            .get_metadata_parent_id_by_thread_id(thread_id)
+                            .get_metadata_id_by_thread_id(thread_id)
                             .await;
                         let checkpoint = Checkpoint::new_auto_with_next_nodes(
                             state.clone(),
@@ -444,7 +440,7 @@ where
                 if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = all_next_nodes.iter().map(|n| n.as_str().to_owned()).collect();
                         let parent_id = checkpointer
-                            .get_metadata_parent_id_by_thread_id(thread_id)
+                            .get_metadata_id_by_thread_id(thread_id)
                             .await;
                         let checkpoint = Checkpoint::new_auto_with_next_nodes(
                             state.clone(),
@@ -465,7 +461,7 @@ where
                     if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
                         let next_node_strs = all_next_nodes.iter().map(|n| n.as_str().to_owned()).collect();
                         let parent_id = checkpointer
-                            .get_metadata_parent_id_by_thread_id(thread_id)
+                            .get_metadata_id_by_thread_id(thread_id)
                             .await;
                         let checkpoint = Checkpoint::new_auto_with_next_nodes(
                             state.clone(),
