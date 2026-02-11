@@ -1,5 +1,6 @@
 mod checkpoint_instantiation;
 mod checkpoint_memory_saver;
+mod checkpoint_sqlite_saver;
 mod checkpoint_trait;
 
 use crate::checkpoint::checkpoint_instantiation::CheckpointMetadata;
@@ -18,7 +19,10 @@ pub struct RunnableConfig {
 
 pub mod checkpoint_struct_api {
     pub use super::checkpoint_instantiation::*;
+    #[cfg(feature = "memory")]
     pub use super::checkpoint_memory_saver::*;
+    #[cfg(feature = "sqlite")]
+    pub use super::checkpoint_sqlite_saver::*;
     pub use super::checkpoint_trait::*;
 }
 

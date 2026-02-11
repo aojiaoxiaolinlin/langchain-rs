@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-langgraph = { path = "../langgraph" }
+langgraph = { path = "../langgraph", features = ["sqlite"] }
 async-trait = { workspace = true }
 langgraph_macro = { path = "../langgraph/macro" }
 langchain_core = { path = "../langchain_core" }

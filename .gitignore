@@ -2,6 +2,5 @@
 
 # 开发环境资料 无需 git add
 .DS_Store
-Procedures1.md
-checkpoint1.md
-checkpoint2.md
+Procedures*.md
+checkpoint*.md
