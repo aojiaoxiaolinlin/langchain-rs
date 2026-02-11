@@ -63,7 +63,7 @@ impl MessagesState {
         self.messages.push_back(message);
     }
 
-    pub fn extend_messages(&mut self, messages: Vector<Arc<Message>>) {
+    pub fn append_messages(&mut self, messages: Vector<Arc<Message>>) {
         self.messages.append(messages);
     }
 

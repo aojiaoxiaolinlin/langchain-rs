@@ -122,19 +122,16 @@ pub struct MessagesState {
 - ✅ 不可变优先设计 + Arc 共享所有权
 - ✅ 提供简洁的辅助方法（last_assistant, last_tool_calls）
 
-**性能问题：**
+**性能问题（已优化）：**
 
 ```rust
 // state_graph.rs 第 238 行
-state = (self.reducer)(state, update);  // ❌ 每步都可能克隆整个状态
-
-// 复杂度分析：O(n*m) 其中 n=步骤数, m=消息数
+(self.reducer)(&mut state, update);  // ✅ 使用原地更新
 ```
 
-**优化建议：**
-- 实现 `DeltaMerge` trait 避免全量克隆
-- 对于大型状态，使用移动语义
-- 考虑引入 `Cow<State>` 模式
+**优化实现：**
+- 已实现 `Fn(&mut S, U)` 签名的 reducer，支持原地状态修改
+- 避免了全量状态克隆，复杂度降低为 O(n)
 
 ### 3.2 检查点系统 ✅ **全面**
 

@@ -17,9 +17,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-/// Reducer 函数类型：接收当前状态和更新，返回新状态
-/// (Current State, Update) -> New State
-pub type Reducer<S, U> = Box<dyn Fn(S, U) -> S + Send + Sync>;
+/// Reducer 函数类型：接收当前状态的可变引用和更新，原地修改状态
+/// (&mut Current State, Update) -> ()
+pub type Reducer<S, U> = Box<dyn Fn(&mut S, U) + Send + Sync>;
 
 /// Graph Specification trait to bundle generic types
 pub trait GraphSpec {
@@ -58,7 +58,7 @@ impl<Spec: GraphSpec> StateGraph<Spec> {
     /// 需要提供一个 reducer 函数来定义如何合并状态
     pub fn new(
         entry: impl GraphLabel,
-        reducer: impl Fn(Spec::State, Spec::Update) -> Spec::State + Send + Sync + 'static,
+        reducer: impl Fn(&mut Spec::State, Spec::Update) + Send + Sync + 'static,
     ) -> Self {
         Self {
             graph: Graph {
@@ -240,8 +240,8 @@ where
 
             for result in results {
                 let (update, next) = result?;
-                // Apply reducer: S' = reducer(S, U)
-                state = (self.reducer)(state, update);
+                // Apply reducer: reducer(&mut S, U)
+                (self.reducer)(&mut state, update);
                 all_next_nodes.extend(next);
             }
 
@@ -435,7 +435,7 @@ where
 
                 // 2. 本轮结束，应用所有 updates
                 for update in updates {
-                    state = (reducer)(state, update);
+                    (reducer)(&mut state, update);
                 }
 
                 // 3. 准备下一轮
@@ -580,7 +580,8 @@ mod tests {
 
     #[tokio::test]
     async fn state_graph_runs_linear_chain() {
-        let mut sg: StateGraph<TestSpec> = StateGraph::new(TestLabel::A, |_, update| update);
+        let mut sg: StateGraph<TestSpec> =
+            StateGraph::new(TestLabel::A, |state, update| *state = update);
 
         sg.add_node(TestLabel::A, AddOne);
         sg.add_node(TestLabel::B, AddOne);
@@ -599,7 +600,8 @@ mod tests {
 
     #[tokio::test]
     async fn state_graph_runs_conditional_branch_taken() {
-        let mut sg: StateGraph<TestSpec> = StateGraph::new(TestLabel::A, |_, update| update);
+        let mut sg: StateGraph<TestSpec> =
+            StateGraph::new(TestLabel::A, |state, update| *state = update);
 
         sg.add_node(TestLabel::A, AddOne);
         sg.add_node(TestLabel::B, AddOne);
@@ -626,7 +628,8 @@ mod tests {
 
     #[tokio::test]
     async fn state_graph_runs_conditional_branch_not_taken_stops_at_predicate() {
-        let mut sg: StateGraph<TestSpec> = StateGraph::new(TestLabel::A, |_, update| update);
+        let mut sg: StateGraph<TestSpec> =
+            StateGraph::new(TestLabel::A, |state, update| *state = update);
 
         sg.add_node(TestLabel::A, AddOne);
 
@@ -651,7 +654,8 @@ mod tests {
 
     #[tokio::test]
     async fn state_graph_run_strategy_stop_at_non_linear() {
-        let mut sg: StateGraph<TestSpec> = StateGraph::new(TestLabel::A, |_, update| update);
+        let mut sg: StateGraph<TestSpec> =
+            StateGraph::new(TestLabel::A, |state, update| *state = update);
 
         sg.add_node(TestLabel::A, AddOne);
         sg.add_node(TestLabel::B, AddOne);
@@ -675,7 +679,8 @@ mod tests {
 
     #[tokio::test]
     async fn state_graph_run_strategy_pick_first() {
-        let mut sg: StateGraph<TestSpec> = StateGraph::new(TestLabel::A, |_, update| update);
+        let mut sg: StateGraph<TestSpec> =
+            StateGraph::new(TestLabel::A, |state, update| *state = update);
 
         sg.add_node(TestLabel::A, AddOne);
         sg.add_node(TestLabel::B, AddOne);
@@ -699,7 +704,8 @@ mod tests {
 
     #[tokio::test]
     async fn state_graph_run_strategy_pick_last() {
-        let mut sg: StateGraph<TestSpec> = StateGraph::new(TestLabel::A, |_, update| update);
+        let mut sg: StateGraph<TestSpec> =
+            StateGraph::new(TestLabel::A, |state, update| *state = update);
 
         sg.add_node(TestLabel::A, AddOne);
         sg.add_node(TestLabel::B, AddOne);
@@ -749,9 +755,10 @@ mod tests {
             type Event = ();
         }
 
-        let mut sg: StateGraph<StringSpec> = StateGraph::new(TestLabel::A, |_, update: String| {
-            update.parse::<i32>().unwrap()
-        });
+        let mut sg: StateGraph<StringSpec> =
+            StateGraph::new(TestLabel::A, |state, update: String| {
+                *state = update.parse::<i32>().unwrap();
+            });
         sg.add_node(TestLabel::A, StringNode);
         let config = RunnableConfig::default();
         let (final_state, _) = sg
@@ -764,7 +771,7 @@ mod tests {
     #[tokio::test]
     async fn state_graph_run_strategy_parallel() {
         let mut sg: StateGraph<TestSpec> =
-            StateGraph::new(TestLabel::A, |state, update| state + update);
+            StateGraph::new(TestLabel::A, |state, update| *state += update);
 
         sg.add_node(TestLabel::A, AddOne);
         sg.add_node(TestLabel::B, AddOne);
@@ -817,10 +824,9 @@ mod tests {
         }
 
         let mut sg: StateGraph<VecSpec> =
-            StateGraph::new(Label::A, |mut state: Vec<String>, update: String| {
+            StateGraph::new(Label::A, |state: &mut Vec<String>, update: String| {
                 state.push(update);
                 state.sort(); // Sort to make deterministic comparison easy
-                state
             });
 
         #[derive(Debug)]

@@ -121,10 +121,9 @@ where
 
         let mut graph: StateGraph<ReactAgentSpec> = StateGraph::new(
             BaseGraphLabel::Start,
-            |mut old: MessagesState, update: MessagesState| {
-                old.extend_messages(update.messages);
+            |old: &mut MessagesState, update: MessagesState| {
+                old.append_messages(update.messages);
                 old.llm_calls += update.llm_calls;
-                old
             },
         );
 

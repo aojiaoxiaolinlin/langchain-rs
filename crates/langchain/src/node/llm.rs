@@ -75,7 +75,7 @@ where
         tracing::debug!("LLM completion: {:?}", completion);
 
         let mut delta = MessagesState::default();
-        delta.extend_messages(completion.messages.into());
+        delta.append_messages(completion.messages.into());
         delta.increment_llm_calls();
         Ok(delta)
     }
