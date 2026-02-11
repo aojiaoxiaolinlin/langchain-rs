@@ -155,15 +155,27 @@ where
         config: &RunnableConfig,
         max_steps: usize,
         strategy: RunStrategy,
+        resume_from: Option<Vec<String>>,
     ) -> Result<(S, Vec<InternedGraphLabel>), GraphError<E>> {
         let mut current_nodes = vec![self.entry];
 
-        // 尝试从 Checkpoint 恢复，
-        // TODO: 这里应该是否不需要每次都从 checkpoint 恢复，只有在中断时才需要从 checkpoint 恢复
-        if let Some(checkpointer) = &self.checkpointer
+        // 优先使用显式传入的恢复点
+        if let Some(nodes) = resume_from {
+            if !nodes.is_empty() {
+                use crate::label_registry::str_to_label;
+                let restored_nodes: Vec<_> = nodes
+                    .iter()
+                    .filter_map(|node_str| str_to_label(node_str))
+                    .collect();
+                if !restored_nodes.is_empty() {
+                    current_nodes = restored_nodes;
+                }
+            }
+        } else if let Some(checkpointer) = &self.checkpointer
             && let Some(thread_id) = &config.thread_id
         {
-            tracing::info!("Resuming from checkpoint: {:?}", config);
+            // Fallback: 自动从 Checkpoint 恢复
+            tracing::info!("Resuming from checkpoint (auto): {:?}", config);
             if let Ok(checkpoint) = checkpointer.get(thread_id).await
                 && let Some(checkpoint) = checkpoint
             {
@@ -288,6 +300,7 @@ where
         config: &'a RunnableConfig,
         max_steps: usize,
         strategy: RunStrategy,
+        resume_from: Option<Vec<String>>,
     ) -> EventStream<'a, Ev> {
         use futures::StreamExt;
 
@@ -298,14 +311,25 @@ where
         let store = &self.store;
 
         let stream = async_stream::stream! {
-            // 尝试恢复 (逻辑同 run)
-            if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
+            // 优先使用显式传入的恢复点
+            if let Some(nodes) = resume_from {
+                 if !nodes.is_empty() {
+                     use crate::label_registry::str_to_label;
+                     let restored_nodes: Vec<_> = nodes
+                        .iter()
+                        .filter_map(|node_str| str_to_label(node_str))
+                        .collect();
+                     if !restored_nodes.is_empty() {
+                         current_nodes = restored_nodes;
+                     }
+                 }
+            } else if let Some(thread_id) = &config.thread_id && let Some(checkpointer) = checkpointer {
+                    // Fallback: 自动从 Checkpoint 恢复
                     // async block in stream is tricky, but here we are in async_stream! macro
                     // Note: get_state needs S: DeserializeOwned.
                     // S is bound in impl block.
                     if let Ok(Some(checkpoint)) = checkpointer.get(thread_id).await {
                         tracing::info!("Resuming from checkpoint: {:?}", thread_id);
-                        state = checkpoint.state;
                         if !checkpoint.next_nodes.is_empty() {
                             // 使用标签注册表进行快速查找（O(1) 而不是 O(n)）
                             use crate::label_registry::str_to_label;
@@ -556,7 +580,7 @@ mod tests {
         sg.add_edge(TestLabel::B, TestLabel::C);
         let config = RunnableConfig::default();
         let (final_state, _) = sg
-            .run(0, &config, 10, RunStrategy::PickFirst)
+            .run(0, &config, 10, RunStrategy::PickFirst, None)
             .await
             .unwrap();
 
@@ -584,7 +608,7 @@ mod tests {
 
         let config = RunnableConfig::default();
         let (final_state, _) = sg
-            .run(0, &config, 10, RunStrategy::PickFirst)
+            .run(0, &config, 10, RunStrategy::PickFirst, None)
             .await
             .unwrap();
 
@@ -610,7 +634,7 @@ mod tests {
         });
         let config = RunnableConfig::default();
         let (final_state, _) = sg
-            .run(-1, &config, 10, RunStrategy::PickFirst)
+            .run(-1, &config, 10, RunStrategy::PickFirst, None)
             .await
             .unwrap();
 
@@ -631,7 +655,7 @@ mod tests {
 
         let config = RunnableConfig::default();
         let (final_state, final_nodes) = sg
-            .run(0, &config, 10, RunStrategy::StopAtNonLinear)
+            .run(0, &config, 10, RunStrategy::StopAtNonLinear, None)
             .await
             .unwrap();
 
@@ -657,7 +681,7 @@ mod tests {
         let config = RunnableConfig::default();
 
         let (final_state, _) = sg
-            .run(0, &config, 10, RunStrategy::PickFirst)
+            .run(0, &config, 10, RunStrategy::PickFirst, None)
             .await
             .unwrap();
 
@@ -680,7 +704,10 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::C);
 
         let config = RunnableConfig::default();
-        let (final_state, _) = sg.run(0, &config, 10, RunStrategy::PickLast).await.unwrap();
+        let (final_state, _) = sg
+            .run(0, &config, 10, RunStrategy::PickLast, None)
+            .await
+            .unwrap();
 
         assert_eq!(final_state, 2);
         // Sorted: B, C. Last is C.
@@ -715,7 +742,10 @@ mod tests {
             });
         sg.add_node(TestLabel::A, StringNode);
         let config = RunnableConfig::default();
-        let (final_state, _) = sg.run(0, &config, 1, RunStrategy::PickFirst).await.unwrap();
+        let (final_state, _) = sg
+            .run(0, &config, 1, RunStrategy::PickFirst, None)
+            .await
+            .unwrap();
         assert_eq!(final_state, 1);
     }
 
@@ -747,7 +777,10 @@ mod tests {
         // reducer(1, 2) -> 3.
         // reducer(3, 2) -> 5.
         let config = RunnableConfig::default();
-        let (final_state, _) = sg.run(0, &config, 10, RunStrategy::Parallel).await.unwrap();
+        let (final_state, _) = sg
+            .run(0, &config, 10, RunStrategy::Parallel, None)
+            .await
+            .unwrap();
 
         assert_eq!(final_state, 5);
     }
@@ -811,7 +844,7 @@ mod tests {
         // Step 3: D, E run. Output "D", "E". State ["A", "B", "C", "D", "E"]. Next [].
         let config = RunnableConfig::default();
         let (final_state, _) = sg
-            .run(Vec::new(), &config, 10, RunStrategy::Parallel)
+            .run(Vec::new(), &config, 10, RunStrategy::Parallel, None)
             .await
             .unwrap();
 

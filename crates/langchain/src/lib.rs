@@ -23,6 +23,7 @@ use langgraph::{
     state_graph::{RunStrategy, StateGraph},
 };
 use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 use thiserror::Error;
 use tracing::debug;
 
@@ -466,13 +467,19 @@ impl ReactAgent {
             },
         );
 
-        let mut state = self.get_state(&config).await;
+        let (mut state, resume_from) = self.get_state(&config).await;
         state.push_message_owned(message.clone());
         let max_steps = 25;
 
         let (state, _) = self
             .graph
-            .run(state, &config, max_steps, RunStrategy::StopAtNonLinear)
+            .run(
+                state,
+                &config,
+                max_steps,
+                RunStrategy::StopAtNonLinear,
+                resume_from,
+            )
             .await?;
 
         Ok(state)
@@ -484,7 +491,7 @@ impl ReactAgent {
         thread_id: Option<&str>,
     ) -> Result<AgentState<MessagesState, S>, AgentError>
     where
-        S: serde::de::DeserializeOwned + JsonSchema,
+        S: DeserializeOwned + JsonSchema,
     {
         let mode = FormatType::JsonObject;
 
@@ -516,13 +523,19 @@ impl ReactAgent {
             },
         );
 
-        let mut state = self.get_state(&config).await;
+        let (mut state, resume_from) = self.get_state(&config).await;
         state.push_message_owned(message.clone());
         let max_steps = 25;
 
         let (state, _) = self
             .graph
-            .run(state, &config, max_steps, RunStrategy::StopAtNonLinear)
+            .run(
+                state,
+                &config,
+                max_steps,
+                RunStrategy::StopAtNonLinear,
+                resume_from,
+            )
             .await?;
 
         let content = state
@@ -558,7 +571,7 @@ impl ReactAgent {
             },
         );
 
-        let mut state = self.get_state(&config).await;
+        let (mut state, resume_from) = self.get_state(&config).await;
 
         state.push_message_owned(message.clone());
         let max_steps = 25;
@@ -569,6 +582,7 @@ impl ReactAgent {
                 &config,
                 max_steps,
                 RunStrategy::StopAtNonLinear,
+                resume_from,
             );
 
             while let Some(item) = inner_stream.next().await {
@@ -579,14 +593,14 @@ impl ReactAgent {
         Ok(stream)
     }
 
-    async fn get_state(&self, config: &RunnableConfig) -> MessagesState {
+    async fn get_state(&self, config: &RunnableConfig) -> (MessagesState, Option<Vec<String>>) {
         if let Some(checkpointer) = &self.graph.checkpointer
             && let Some(thread_id) = &config.thread_id
         {
             debug!("有checkpointer，尝试从checkpointer获取状态");
             if let Ok(Some(checkpoint)) = checkpointer.get(thread_id).await {
                 debug!("从checkpointer获取状态成功");
-                checkpoint.state
+                (checkpoint.state, Some(checkpoint.next_nodes))
             } else {
                 debug!("从checkpointer获取状态失败，初始化新状态");
                 let mut state = MessagesState::default();
@@ -597,14 +611,14 @@ impl ReactAgent {
                 if let Err(e) = checkpointer.put(&checkpoint).await {
                     tracing::error!("Failed to save checkpoint: {:?}", e);
                 }
-                state
+                (state, None)
             }
         } else {
             let mut state = MessagesState::default();
             if let Some(system_prompt) = &self.system_prompt {
                 state.push_message_owned(Message::system(system_prompt.clone()));
             }
-            state
+            (state, None)
         }
     }
 }

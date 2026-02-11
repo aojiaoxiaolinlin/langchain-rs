@@ -1,3 +1,7 @@
+//! # langchain_core
+//!
+//! langchain 库的核心模块，包含了所有的基础类型和函数。
+
 pub use langchain_core_macro::tool;
 
 pub mod error;
