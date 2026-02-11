@@ -64,13 +64,11 @@ pub trait Checkpointer<S>: Send + Sync {
 
     // 获取指定检查点的元数据的 parent_id
     async fn get_metadata_parent_id_by_thread_id(&self, thread_id: &str) -> Option<String> {
-        if let Ok(checkpoint) = self.get(thread_id).await
-            && let Some(checkpoint) = checkpoint
-        {
-            checkpoint.metadata.parent_id
-        } else {
-            None
-        }
+        self.get(thread_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|checkpoint| checkpoint.metadata.parent_id)
     }
 
     // ========== 版本管理 ==========
