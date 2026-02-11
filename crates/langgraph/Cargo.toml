@@ -5,8 +5,10 @@ edition = "2024"
 
 [features]
 default = ["memory"]
+full-checkpoint = ["memory", "sqlite", "postgres"]
 memory = []
 sqlite = []
+postgres = []
 
 [dependencies]
 thiserror = { workspace = true }
@@ -29,6 +31,7 @@ chrono = "0.4.43"
 sqlx = { version = "0.8", features = [
     "runtime-tokio-rustls",
     "sqlite",
+    "postgres",
     "chrono",
     "uuid",
     "json",

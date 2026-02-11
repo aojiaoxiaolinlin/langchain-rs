@@ -91,7 +91,7 @@ impl SqliteSaver {
     /// 初始化数据库表结构
     async fn init_schema(&self) -> Result<(), CheckpointError> {
         let query = r#"
-            CREATE TABLE IF NOT EXISTS checkpoints (
+            CREATE TABLE IF NOT EXISTS langchain_rs_checkpoints (
                 id TEXT PRIMARY KEY NOT NULL,
                 parent_id TEXT,
                 thread_id TEXT NOT NULL,
@@ -107,19 +107,19 @@ impl SqliteSaver {
             );
 
             CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_id
-                ON checkpoints(thread_id);
+                ON langchain_rs_checkpoints(thread_id);
 
             CREATE INDEX IF NOT EXISTS idx_checkpoints_parent_id
-                ON checkpoints(parent_id);
+                ON langchain_rs_checkpoints(parent_id);
 
             CREATE INDEX IF NOT EXISTS idx_checkpoints_created_at
-                ON checkpoints(created_at);
+                ON langchain_rs_checkpoints(created_at);
 
             CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_created
-                ON checkpoints(thread_id, created_at DESC);
+                ON langchain_rs_checkpoints(thread_id, created_at DESC);
 
             CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_step
-                ON checkpoints(thread_id, step);
+                ON langchain_rs_checkpoints(thread_id, step);
         "#;
 
         sqlx::query(query)
@@ -285,7 +285,7 @@ where
 {
     async fn get(&self, thread_id: &str) -> Result<Option<Checkpoint<S>>, CheckpointError> {
         let query = r#"
-            SELECT * FROM checkpoints
+            SELECT * FROM langchain_rs_checkpoints
             WHERE thread_id = ?
             ORDER BY id DESC
             LIMIT 1
@@ -319,7 +319,7 @@ where
             Self::checkpoint_type_to_string(&checkpoint.metadata.checkpoint_type);
 
         let query = r#"
-            INSERT INTO checkpoints (
+            INSERT INTO langchain_rs_checkpoints (
                 id, parent_id, thread_id, created_at, step, checkpoint_type,
                 tags, state_json, next_nodes, pending_interrupt, size_bytes, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -364,7 +364,7 @@ where
     }
 
     async fn delete(&self, thread_id: &str) -> Result<(), CheckpointError> {
-        let query = "DELETE FROM checkpoints WHERE thread_id = ?";
+        let query = "DELETE FROM langchain_rs_checkpoints WHERE thread_id = ?";
 
         sqlx::query(query)
             .bind(thread_id)
@@ -376,7 +376,7 @@ where
     }
 
     async fn delete_checkpoint(&self, checkpoint_id: &CheckpointId) -> Result<(), CheckpointError> {
-        let query = "DELETE FROM checkpoints WHERE id = ?";
+        let query = "DELETE FROM langchain_rs_checkpoints WHERE id = ?";
 
         let result = sqlx::query(query)
             .bind(checkpoint_id)
@@ -397,7 +397,7 @@ where
         limit: Option<usize>,
     ) -> Result<Vec<CheckpointMetadata>, CheckpointError> {
         let query = r#"
-            SELECT * FROM checkpoints
+            SELECT * FROM langchain_rs_checkpoints
             WHERE thread_id = ?
             ORDER BY created_at DESC
             LIMIT ?
@@ -417,7 +417,7 @@ where
         &self,
         query: CheckpointQuery,
     ) -> Result<CheckpointListResult, CheckpointError> {
-        let mut sql = "SELECT * FROM checkpoints WHERE 1=1".to_owned();
+        let mut sql = "SELECT * FROM langchain_rs_checkpoints WHERE 1=1".to_owned();
         let mut params: Vec<String> = Vec::new();
         let param_index = &mut 0;
 
@@ -504,7 +504,7 @@ where
         &self,
         checkpoint_id: &CheckpointId,
     ) -> Result<Option<Checkpoint<S>>, CheckpointError> {
-        let query = "SELECT * FROM checkpoints WHERE id = ?";
+        let query = "SELECT * FROM langchain_rs_checkpoints WHERE id = ?";
 
         let row = sqlx::query(query)
             .bind(checkpoint_id)
@@ -525,7 +525,7 @@ where
         &self,
         checkpoint_id: &CheckpointId,
     ) -> Result<Option<CheckpointMetadata>, CheckpointError> {
-        let query = "SELECT * FROM checkpoints WHERE id = ?";
+        let query = "SELECT * FROM langchain_rs_checkpoints WHERE id = ?";
 
         let row = sqlx::query(query)
             .bind(checkpoint_id)
@@ -543,7 +543,7 @@ where
         &self,
         checkpoint_id: &CheckpointId,
     ) -> Result<Option<String>, CheckpointError> {
-        let query = "SELECT parent_id FROM checkpoints WHERE id = ?";
+        let query = "SELECT parent_id FROM langchain_rs_checkpoints WHERE id = ?";
 
         let row = sqlx::query(query)
             .bind(checkpoint_id)
@@ -565,7 +565,7 @@ where
         let mut current_id: Option<String> = Some(checkpoint_id.clone());
 
         while let Some(id) = current_id.take() {
-            let query = "SELECT * FROM checkpoints WHERE id = ?";
+            let query = "SELECT * FROM langchain_rs_checkpoints WHERE id = ?";
             let row = sqlx::query(query)
                 .bind(&id)
                 .fetch_optional(&self.pool)
@@ -592,7 +592,7 @@ where
         time: i64,
     ) -> Result<Option<Checkpoint<S>>, CheckpointError> {
         let query = r#"
-            SELECT * FROM checkpoints
+            SELECT * FROM langchain_rs_checkpoints
             WHERE thread_id = ? AND created_at <= ?
             ORDER BY created_at DESC
             LIMIT 1
@@ -620,7 +620,7 @@ where
         match policy {
             CleanupPolicy::KeepLast(n) => {
                 // 获取所有 thread_id
-                let threads_query = "SELECT DISTINCT thread_id FROM checkpoints";
+                let threads_query = "SELECT DISTINCT thread_id FROM langchain_rs_checkpoints";
                 let thread_rows = sqlx::query(threads_query)
                     .fetch_all(&self.pool)
                     .await
@@ -633,7 +633,7 @@ where
 
                     // 获取该线程的所有检查点，按时间排序
                     let query = r#"
-                        SELECT id FROM checkpoints
+                        SELECT id FROM langchain_rs_checkpoints
                         WHERE thread_id = ?
                         ORDER BY created_at ASC
                     "#;
@@ -658,7 +658,7 @@ where
             CleanupPolicy::KeepDays(days) => {
                 let cutoff = Utc::now().timestamp_millis() - (days * 86400 * 1000);
 
-                let query = "SELECT id FROM checkpoints WHERE created_at < ?";
+                let query = "SELECT id FROM langchain_rs_checkpoints WHERE created_at < ?";
                 let rows = sqlx::query(query)
                     .bind(cutoff)
                     .fetch_all(&self.pool)
@@ -674,7 +674,7 @@ where
             }
             CleanupPolicy::KeepMaxSizeBytes(max_size) => {
                 // 计算总大小
-                let size_query = "SELECT SUM(size_bytes) as total FROM checkpoints";
+                let size_query = "SELECT SUM(size_bytes) as total FROM langchain_rs_checkpoints";
                 let size_row = sqlx::query(size_query)
                     .fetch_one(&self.pool)
                     .await
@@ -684,7 +684,7 @@ where
                 if total_size as usize > *max_size {
                     // 按时间顺序删除，直到总大小小于限制
                     let query = r#"
-                        SELECT id, size_bytes FROM checkpoints
+                        SELECT id, size_bytes FROM langchain_rs_checkpoints
                         ORDER BY created_at ASC
                     "#;
                     let rows = sqlx::query(query)
@@ -716,7 +716,10 @@ where
             for id_chunk in to_delete.chunks(900) {
                 // 使用远低于变量限制的分块大小
                 let placeholders = id_chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-                let query = format!("DELETE FROM checkpoints WHERE id IN ({})", placeholders);
+                let query = format!(
+                    "DELETE FROM langchain_rs_checkpoints WHERE id IN ({})",
+                    placeholders
+                );
 
                 let mut q = sqlx::query(&query);
                 for id in id_chunk {
@@ -736,14 +739,14 @@ where
     async fn stats(&self, thread_id: Option<&str>) -> Result<CheckpointStats, CheckpointError> {
         let (count_query, time_query) = if thread_id.is_some() {
             (
-                "SELECT COUNT(*) as count, SUM(size_bytes) as size FROM checkpoints WHERE thread_id = ?".to_owned(),
-                "SELECT MIN(created_at) as oldest, MAX(created_at) as newest FROM checkpoints WHERE thread_id = ?"
+                "SELECT COUNT(*) as count, SUM(size_bytes) as size FROM langchain_rs_checkpoints WHERE thread_id = ?".to_owned(),
+                "SELECT MIN(created_at) as oldest, MAX(created_at) as newest FROM langchain_rs_checkpoints WHERE thread_id = ?"
                     .to_owned(),
             )
         } else {
             (
-                "SELECT COUNT(*) as count, SUM(size_bytes) as size FROM checkpoints".to_owned(),
-                "SELECT MIN(created_at) as oldest, MAX(created_at) as newest FROM checkpoints"
+                "SELECT COUNT(*) as count, SUM(size_bytes) as size FROM langchain_rs_checkpoints".to_owned(),
+                "SELECT MIN(created_at) as oldest, MAX(created_at) as newest FROM langchain_rs_checkpoints"
                     .to_owned(),
             )
         };
@@ -1251,7 +1254,7 @@ mod tests {
 
         // 初始化表
         let init_query = r#"
-            CREATE TABLE IF NOT EXISTS checkpoints (
+            CREATE TABLE IF NOT EXISTS langchain_rs_checkpoints (
                 id TEXT PRIMARY KEY NOT NULL,
                 parent_id TEXT,
                 thread_id TEXT NOT NULL,
