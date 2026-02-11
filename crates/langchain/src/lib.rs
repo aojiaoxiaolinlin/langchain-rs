@@ -1,15 +1,11 @@
-use std::{collections::HashMap, error::Error, marker::PhantomData, mem, sync::Arc};
+use std::{collections::HashMap, error::Error, marker::PhantomData, sync::Arc};
 
-use async_trait::async_trait;
-use futures::{Stream, StreamExt, future::join_all};
+use futures::{Stream, StreamExt};
 use langchain_core::{ModelError, ToolError};
 use langchain_core::{
-    message::{FunctionCall, Message, ToolCall},
+    message::Message,
     request::{FormatType, ResponseFormat, ToolSpec},
-    state::{
-        AgentState, ChatCompletion, ChatModel, ChatStreamEvent, InvokeOptions, MessagesState,
-        RegisteredTool, ToolFn,
-    },
+    state::{AgentState, ChatModel, ChatStreamEvent, MessagesState, RegisteredTool, ToolFn},
     store::BaseStore,
 };
 use langgraph::{
@@ -19,7 +15,6 @@ use langgraph::{
     },
     graph::GraphError,
     label::{BaseGraphLabel, GraphLabel},
-    node::{EventSink, Node, NodeContext},
     state_graph::{RunStrategy, StateGraph},
 };
 use schemars::JsonSchema;
@@ -28,270 +23,10 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use tracing::debug;
 
-pub struct LlmNode<M>
-where
-    M: ChatModel + 'static,
-{
-    pub model: M,
-    pub tools: Vec<ToolSpec>,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<u32>,
-}
-
-impl<M> LlmNode<M>
-where
-    M: ChatModel + 'static,
-{
-    pub fn new(model: M, tools: Vec<ToolSpec>) -> Self {
-        Self {
-            model,
-            tools,
-            temperature: None,
-            max_tokens: None,
-        }
-    }
-
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
-    }
-}
-
-#[async_trait]
-impl<M> Node<MessagesState, MessagesState, AgentError, ChatStreamEvent> for LlmNode<M>
-where
-    M: ChatModel + Send + Sync + 'static,
-{
-    async fn run_sync(
-        &self,
-        input: &MessagesState,
-        context: NodeContext<'_>,
-    ) -> Result<MessagesState, AgentError> {
-        let messages: Vec<_> = input.messages.iter().cloned().collect();
-        let options = InvokeOptions {
-            tools: if self.tools.is_empty() {
-                None
-            } else {
-                Some(&self.tools)
-            },
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            response_format: context.config.response_format.as_ref(),
-            ..Default::default()
-        };
-        let completion: ChatCompletion = self
-            .model
-            .invoke(&messages, &options)
-            .await
-            .map_err(AgentError::Model)?;
-        tracing::debug!("LLM completion: {:?}", completion);
-
-        let mut delta = MessagesState::default();
-        delta.extend_messages(completion.messages);
-        delta.increment_llm_calls();
-        Ok(delta)
-    }
-
-    async fn run_stream(
-        &self,
-        input: &MessagesState,
-        sink: &mut dyn EventSink<ChatStreamEvent>,
-        _context: NodeContext<'_>,
-    ) -> Result<MessagesState, AgentError> {
-        let messages: Vec<_> = input.messages.iter().cloned().collect();
-
-        let options = InvokeOptions {
-            tools: if self.tools.is_empty() {
-                None
-            } else {
-                Some(&self.tools)
-            },
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            ..Default::default()
-        };
-
-        let mut completion_stream = self
-            .model
-            .stream(&messages, &options)
-            .await
-            .map_err(AgentError::Model)?;
-
-        let mut content = String::new();
-        let mut tool_calls: Vec<ToolCall> = Vec::new();
-
-        let mut raw_args = String::new();
-
-        while let Some(event) = completion_stream.next().await {
-            let event = event.map_err(AgentError::Model)?;
-            sink.emit(event.clone()).await;
-
-            match event {
-                ChatStreamEvent::Content(chunk) => {
-                    content.push_str(&chunk);
-                }
-                ChatStreamEvent::ToolCallDelta {
-                    index,
-                    id,
-                    type_name,
-                    name,
-                    arguments,
-                } => {
-                    if tool_calls.len() <= index {
-                        tool_calls.resize_with(index + 1, || ToolCall {
-                            id: String::new(),
-                            type_name: String::new(),
-                            function: FunctionCall {
-                                name: String::new(),
-                                arguments: serde_json::Value::Null,
-                            },
-                        });
-
-                        if index > 0 {
-                            let call = &mut tool_calls[index - 1];
-                            call.function.arguments =
-                                serde_json::Value::String(mem::take(&mut raw_args));
-                        }
-                    }
-
-                    let call = &mut tool_calls[index];
-
-                    if let Some(id) = id {
-                        call.id = id;
-                    }
-                    if let Some(tn) = type_name {
-                        call.type_name = tn;
-                    }
-                    if let Some(name) = name {
-                        call.function.name = name;
-                    }
-                    if let Some(args) = arguments {
-                        raw_args.push_str(&args);
-                    }
-                }
-                ChatStreamEvent::Done { .. } => {}
-            }
-        }
-
-        let mut delta = MessagesState::default();
-
-        if !content.is_empty() || !tool_calls.is_empty() {
-            let assistant = Message::Assistant {
-                content,
-                tool_calls: if tool_calls.is_empty() {
-                    None
-                } else {
-                    let len = tool_calls.len();
-                    tool_calls[len - 1].function.arguments = serde_json::Value::String(raw_args);
-                    Some(tool_calls)
-                },
-                name: None,
-            };
-            delta.push_message_owned(assistant);
-        }
-
-        delta.increment_llm_calls();
-        Ok(delta)
-    }
-}
-
-pub struct ToolNode<E>
-where
-    E: Send + Sync + 'static,
-{
-    pub tools: HashMap<String, Box<ToolFn<E>>>,
-}
-
-impl<E> ToolNode<E>
-where
-    E: Send + Sync + 'static,
-{
-    pub fn new(tools: HashMap<String, Box<ToolFn<E>>>) -> Self {
-        Self { tools }
-    }
-}
-
-struct IdentityNode<E> {
-    _marker: PhantomData<E>,
-}
-
-#[async_trait]
-impl<E> Node<MessagesState, MessagesState, E, ChatStreamEvent> for IdentityNode<E>
-where
-    E: Send + Sync + 'static,
-{
-    async fn run_sync(
-        &self,
-        _input: &MessagesState,
-        _context: NodeContext<'_>,
-    ) -> Result<MessagesState, E> {
-        Ok(MessagesState::default())
-    }
-
-    async fn run_stream(
-        &self,
-        input: &MessagesState,
-        _sink: &mut dyn EventSink<ChatStreamEvent>,
-        context: NodeContext<'_>,
-    ) -> Result<MessagesState, E> {
-        self.run_sync(input, context).await
-    }
-}
-
-#[async_trait]
-impl<E> Node<MessagesState, MessagesState, AgentError, ChatStreamEvent> for ToolNode<E>
-where
-    E: Error + Send + Sync + 'static,
-{
-    async fn run_sync(
-        &self,
-        input: &MessagesState,
-        _context: NodeContext<'_>,
-    ) -> Result<MessagesState, AgentError> {
-        let mut delta = MessagesState::default();
-        if let Some(calls) = input.last_tool_calls() {
-            let mut futures = Vec::new();
-            let mut ids = Vec::new();
-            tracing::debug!("Tool calls count: {}", calls.len());
-            for call in calls {
-                if let Some(handler) = self.tools.get(call.function_name()) {
-                    ids.push(call.id().to_owned());
-                    tracing::debug!("Tool call: {:?}", call.function);
-                    futures.push((handler)(call.arguments()));
-                }
-            }
-            let results = join_all(futures).await;
-            for (id, result) in ids.into_iter().zip(results.into_iter()) {
-                let content = match result {
-                    Ok(value) => {
-                        tracing::debug!("Tool call result: {}", value);
-                        value.to_string()
-                    }
-                    Err(e) => {
-                        tracing::error!("Tool call failed: {}", e);
-                        format!("Error: {}", e)
-                    }
-                };
-                delta.push_message_owned(Message::tool(content, id));
-            }
-        }
-        Ok(delta)
-    }
-
-    async fn run_stream(
-        &self,
-        input: &MessagesState,
-        _sink: &mut dyn EventSink<ChatStreamEvent>,
-        context: NodeContext<'_>,
-    ) -> Result<MessagesState, AgentError> {
-        self.run_sync(input, context).await
-    }
-}
+pub mod node;
+use node::identity::IdentityNode;
+pub use node::llm::LlmNode;
+pub use node::tool::ToolNode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, GraphLabel)]
 enum ReactAgentLabel {
@@ -648,7 +383,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use langchain_core::state::ChatStreamEvent;
+    use async_trait::async_trait;
+    use langchain_core::state::{ChatCompletion, ChatStreamEvent};
     use langchain_core::tool;
     use langchain_core::{
         message::{FunctionCall, Message, ToolCall},

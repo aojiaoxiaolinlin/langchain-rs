@@ -1,4 +1,5 @@
 /target
+.trae
 
 # 开发环境资料 无需 git add
 .DS_Store

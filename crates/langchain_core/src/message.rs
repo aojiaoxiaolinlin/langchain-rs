@@ -248,12 +248,10 @@ impl ToolCall {
         &self.function.name
     }
 
-    pub fn arguments(&self) -> serde_json::Value {
+    pub fn arguments(&self) -> Result<serde_json::Value, serde_json::Error> {
         match &self.function.arguments {
-            serde_json::Value::String(value) => {
-                serde_json::from_str(value).expect("function arguments must be valid json")
-            }
-            value => value.clone(),
+            serde_json::Value::String(value) => serde_json::from_str(value),
+            value => Ok(value.clone()),
         }
     }
 
