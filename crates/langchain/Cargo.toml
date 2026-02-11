@@ -22,7 +22,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true }
 schemars = { workspace = true }
 langchain_openai = { path = "../langchain_openai" }
-langgraph = { path = "../langgraph", features = ["sqlite"] }
+langgraph = { path = "../langgraph", features = ["full-checkpoint"] }
 
 
 [lints]
