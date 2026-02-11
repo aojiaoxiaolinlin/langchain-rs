@@ -408,7 +408,7 @@ where
 
         let rows = sqlx::query(query)
             .bind(thread_id)
-            .bind(limit.unwrap_or(usize::MAX) as i64)
+            .bind(limit.map(|l| l as i64))
             .fetch_all(&self.pool)
             .await
             .map_err(|e| CheckpointError::Storage(format!("List failed: {}", e)))?;
