@@ -443,10 +443,10 @@ where
             bind_index += 1;
         }
 
-        if let Some(ref tags) = query.tags {
-            if !tags.is_empty() {
-                sql.push_str(&format!(" AND tags @> ${}", bind_index));
-            }
+        if let Some(ref tags) = query.tags
+            && !tags.is_empty()
+        {
+            sql.push_str(&format!(" AND tags @> ${}", bind_index));
         }
 
         match query.order {
@@ -472,12 +472,12 @@ where
         if let Some(ref cp_type) = query.checkpoint_type {
             q = q.bind(Self::checkpoint_type_to_string(cp_type));
         }
-        if let Some(ref tags) = query.tags {
-            if !tags.is_empty() {
-                let tags_json = serde_json::to_value(tags)
-                    .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
-                q = q.bind(tags_json);
-            }
+        if let Some(ref tags) = query.tags
+            && !tags.is_empty()
+        {
+            let tags_json = serde_json::to_value(tags)
+                .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+            q = q.bind(tags_json);
         }
 
         let rows = q
@@ -615,7 +615,7 @@ where
                         SELECT ctid FROM (
                             SELECT ctid, ROW_NUMBER() OVER (
                                 PARTITION BY thread_id
-                                ORDER BY created_at ASC
+                                ORDER BY id DESC
                             ) as rn
                             FROM langchain_rs_checkpoints
                         ) sub
