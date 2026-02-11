@@ -423,51 +423,43 @@ where
         let mut sql = "SELECT * FROM langchain_rs_checkpoints WHERE 1=1".to_owned();
         let mut bind_index = 1;
 
-        // thread_id 过滤
-        if let Some(ref _thread_id) = query.thread_id {
+        if query.thread_id.is_some() {
             sql.push_str(&format!(" AND thread_id = ${}", bind_index));
             bind_index += 1;
         }
 
-        // start_time 过滤
-        if let Some(_start) = query.start_time {
+        if query.start_time.is_some() {
             sql.push_str(&format!(" AND created_at >= ${}", bind_index));
             bind_index += 1;
         }
 
-        // end_time 过滤
-        if let Some(_end) = query.end_time {
+        if query.end_time.is_some() {
             sql.push_str(&format!(" AND created_at <= ${}", bind_index));
             bind_index += 1;
         }
 
-        // checkpoint_type 过滤
-        if let Some(ref _cp_type) = query.checkpoint_type {
+        if query.checkpoint_type.is_some() {
             sql.push_str(&format!(" AND checkpoint_type = ${}", bind_index));
+            bind_index += 1;
         }
 
-        // 标签过滤 - PostgreSQL 支持 JSONB 查询
         if let Some(ref tags) = query.tags {
-            for (key, _value) in tags.iter() {
-                sql.push_str(&format!(" AND tags->>'{}' IS NOT NULL", key));
+            if !tags.is_empty() {
+                sql.push_str(&format!(" AND tags @> ${}", bind_index));
             }
         }
 
-        // 排序
         match query.order {
             CheckpointOrder::Desc => sql.push_str(" ORDER BY created_at DESC"),
             CheckpointOrder::Asc => sql.push_str(" ORDER BY created_at ASC"),
         }
 
-        // 限制数量
         if let Some(limit) = query.limit {
             sql.push_str(&format!(" LIMIT {}", limit));
         }
 
-        // 构建查询
         let mut q = sqlx::query(&sql);
 
-        // 绑定参数
         if let Some(ref thread_id) = query.thread_id {
             q = q.bind(thread_id);
         }
@@ -480,19 +472,21 @@ where
         if let Some(ref cp_type) = query.checkpoint_type {
             q = q.bind(Self::checkpoint_type_to_string(cp_type));
         }
+        if let Some(ref tags) = query.tags {
+            if !tags.is_empty() {
+                let tags_json = serde_json::to_value(tags)
+                    .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+                q = q.bind(tags_json);
+            }
+        }
 
         let rows = q
             .fetch_all(&self.pool)
             .await
             .map_err(|e| CheckpointError::Storage(format!("Search failed: {}", e)))?;
 
-        // 标签值过滤（需要在 Rust 中进行精确匹配）
         let checkpoints: Result<Vec<_>, _> = rows.iter().map(Self::row_to_metadata).collect();
-        let mut checkpoints = checkpoints?;
-
-        if let Some(ref tags) = query.tags {
-            checkpoints.retain(|m| tags.iter().all(|(k, v)| m.tags.get(k) == Some(v)))
-        }
+        let checkpoints = checkpoints?;
 
         Ok(CheckpointListResult {
             total_count: checkpoints.len(),
