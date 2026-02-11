@@ -5,3 +5,6 @@
 .DS_Store
 Procedures*.md
 checkpoint*.md
+
+# 开发环境产生的 data/checkoutpoint.db 无需 git add
+/data/*.db
