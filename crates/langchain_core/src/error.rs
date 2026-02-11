@@ -271,13 +271,14 @@ impl Default for RetryConfig {
 }
 
 /// 简单的重试逻辑
-pub async fn retry_with_backoff<F, T, E>(
-    operation: F,
+pub async fn retry_with_backoff<F, T, E, Fut>(
+    mut operation: F,
     error_category: impl Fn(&E) -> ErrorCategory,
     config: &RetryConfig,
 ) -> Result<T, E>
 where
-    F: Fn() -> futures::future::Ready<Result<T, E>>,
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
     E: std::fmt::Debug,
 {
     let mut delay = std::time::Duration::from_millis(config.initial_delay_ms);
