@@ -27,7 +27,6 @@ pub struct RunnableConfig {
     pub response_format: Option<ResponseFormat>,
 }
 
-<<<<<<< HEAD
 pub mod checkpoint_struct_api {
     pub use super::checkpoint_instantiation::*;
     #[cfg(feature = "memory")]
@@ -41,8 +40,6 @@ pub mod checkpoint_struct_api {
     pub use super::checkpoint_trait::*;
 }
 
-=======
->>>>>>> ec47e8e6dfe559833633279e06cc4260beb12e5a
 /// 检查点 ID（唯一标识-uuidv7）
 pub type CheckpointId = String;
 
