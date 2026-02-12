@@ -4,10 +4,18 @@ mod checkpoint_postgres_saver;
 mod checkpoint_sqlite_saver;
 mod checkpoint_trait;
 
-use crate::checkpoint::checkpoint_instantiation::CheckpointMetadata;
 use langchain_core::request::ResponseFormat;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+pub use checkpoint_instantiation::*;
+#[cfg(feature = "memory")]
+pub use checkpoint_memory_saver::*;
+#[cfg(feature = "postgres")]
+pub use checkpoint_postgres_saver::*;
+#[cfg(feature = "sqlite")]
+pub use checkpoint_sqlite_saver::*;
+pub use checkpoint_trait::*;
 
 /// 运行配置
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -16,17 +24,6 @@ pub struct RunnableConfig {
     pub thread_id: Option<String>,
     /// 响应格式
     pub response_format: Option<ResponseFormat>,
-}
-
-pub mod checkpoint_struct_api {
-    pub use super::checkpoint_instantiation::*;
-    #[cfg(feature = "memory")]
-    pub use super::checkpoint_memory_saver::*;
-    #[cfg(feature = "postgres")]
-    pub use super::checkpoint_postgres_saver::*;
-    #[cfg(feature = "sqlite")]
-    pub use super::checkpoint_sqlite_saver::*;
-    pub use super::checkpoint_trait::*;
 }
 
 /// 检查点 ID（唯一标识-uuidv7）

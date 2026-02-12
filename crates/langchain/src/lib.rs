@@ -10,8 +10,7 @@ use langchain_core::{
 };
 use langgraph::{
     checkpoint::{
-        RunnableConfig,
-        checkpoint_struct_api::{Checkpoint, Checkpointer},
+        RunnableConfig, {Checkpoint, Checkpointer},
     },
     graph::GraphError,
     label::{BaseGraphLabel, GraphLabel},
@@ -490,7 +489,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_react_agent_with_checkpointer() {
-        use langgraph::checkpoint::checkpoint_struct_api::MemorySaver;
+        use langgraph::checkpoint::MemorySaver;
         use std::sync::Arc;
 
         let checkpointer = Arc::new(MemorySaver::new());

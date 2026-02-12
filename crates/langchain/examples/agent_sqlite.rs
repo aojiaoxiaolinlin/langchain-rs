@@ -1,7 +1,7 @@
 use langchain::ReactAgent;
 use langchain_core::message::Message;
 use langchain_openai::ChatOpenAIBuilder;
-use langgraph::checkpoint::checkpoint_struct_api::{SqliteSaver, SqliteSaverConfig};
+use langgraph::checkpoint::{SqliteSaver, SqliteSaverConfig};
 use std::{env, sync::Arc};
 use tracing_subscriber::EnvFilter;
 
