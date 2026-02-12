@@ -564,7 +564,7 @@ mod tests {
         async fn run_stream(
             &self,
             input: &i32,
-            _sink: &mut dyn EventSink<()>,
+            _sink: &dyn EventSink<()>,
             _context: NodeContext<'_>,
         ) -> Result<i32, NodeError> {
             Ok(*input + 1)
@@ -740,7 +740,7 @@ mod tests {
             async fn run_stream(
                 &self,
                 input: &i32,
-                _sink: &mut dyn EventSink<()>,
+                _sink: &dyn EventSink<()>,
                 _context: NodeContext<'_>,
             ) -> Result<String, String> {
                 Ok(format!("{}", input + 1))
@@ -843,7 +843,7 @@ mod tests {
             async fn run_stream(
                 &self,
                 _: &Vec<String>,
-                _: &mut dyn EventSink<()>,
+                _: &dyn EventSink<()>,
                 _context: NodeContext<'_>,
             ) -> Result<String, NodeError> {
                 Ok(self.0.to_owned())

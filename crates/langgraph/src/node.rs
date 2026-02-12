@@ -34,8 +34,8 @@ impl<'a> NodeContext<'a> {
 pub enum NodeError {}
 
 #[async_trait]
-pub trait EventSink<Ev>: Send {
-    async fn emit(&mut self, event: Ev);
+pub trait EventSink<Ev>: Send + Sync {
+    async fn emit(&self, event: Ev);
 }
 
 /// 事件流类型
@@ -77,7 +77,7 @@ pub trait Node<I, O, E, Ev>: Downcast + Send + Sync + 'static {
     async fn run_stream(
         &self,
         input: &I,
-        sink: &mut dyn EventSink<Ev>,
+        sink: &dyn EventSink<Ev>,
         context: NodeContext<'_>,
     ) -> Result<O, E>;
 }

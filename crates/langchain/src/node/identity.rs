@@ -23,7 +23,7 @@ where
     async fn run_stream(
         &self,
         input: &MessagesState,
-        _sink: &mut dyn EventSink<ChatStreamEvent>,
+        _sink: &dyn EventSink<ChatStreamEvent>,
         context: NodeContext<'_>,
     ) -> Result<MessagesState, E> {
         self.run_sync(input, context).await

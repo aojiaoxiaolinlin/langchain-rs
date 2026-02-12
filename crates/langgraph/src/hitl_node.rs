@@ -158,7 +158,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
     async fn run_stream(
         &self,
         input: &MessagesState,
-        _sink: &mut dyn EventSink<()>,
+        _sink: &dyn EventSink<()>,
         context: NodeContext<'_>,
     ) -> Result<MessagesState, InterruptError> {
         self.run_sync(input, context).await

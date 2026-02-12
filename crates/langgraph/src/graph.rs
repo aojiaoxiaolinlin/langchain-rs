@@ -184,7 +184,7 @@ impl<I, O, E: std::fmt::Debug, Ev: std::fmt::Debug> Graph<I, O, E, Ev> {
 
         #[async_trait::async_trait]
         impl<Ev: Send> crate::node::EventSink<Ev> for ChannelSink<Ev> {
-            async fn emit(&mut self, event: Ev) {
+            async fn emit(&self, event: Ev) {
                 let _ = self.tx.send(event).await;
             }
         }
@@ -193,9 +193,9 @@ impl<I, O, E: std::fmt::Debug, Ev: std::fmt::Debug> Graph<I, O, E, Ev> {
             yield Ok(GraphEvent::node_start(label));
 
             let (tx, mut rx) = mpsc::channel(100);
-            let mut sink = ChannelSink { tx };
+            let sink = ChannelSink { tx };
 
-            let mut run_future = state.node.run_stream(input, &mut sink, context);
+            let mut run_future = state.node.run_stream(input, &sink, context);
 
             let output_result;
 
@@ -311,7 +311,7 @@ mod tests {
         async fn run_stream(
             &self,
             input: &i32,
-            _sink: &mut dyn EventSink<()>,
+            _sink: &dyn EventSink<()>,
             _context: NodeContext<'_>,
         ) -> Result<i32, NodeError> {
             Ok(*input + 1)
@@ -337,7 +337,7 @@ mod tests {
         async fn run_stream(
             &self,
             input: &i32,
-            sink: &mut dyn EventSink<i32>,
+            sink: &dyn EventSink<i32>,
             _context: NodeContext<'_>,
         ) -> Result<i32, NodeError> {
             let value = *input + 1;

@@ -97,7 +97,7 @@ mod test {
         async fn run_stream(
             &self,
             input: &i32,
-            _sink: &mut dyn EventSink<()>,
+            _sink: &dyn EventSink<()>,
             _context: NodeContext<'_>,
         ) -> Result<i32, NodeError> {
             Ok(*input + 1)

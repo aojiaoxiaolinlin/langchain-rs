@@ -83,7 +83,7 @@ where
     async fn run_stream(
         &self,
         input: &MessagesState,
-        sink: &mut dyn EventSink<ChatStreamEvent>,
+        sink: &dyn EventSink<ChatStreamEvent>,
         _context: NodeContext<'_>,
     ) -> Result<MessagesState, AgentError> {
         let messages: Vec<_> = input.messages.iter().cloned().collect();
