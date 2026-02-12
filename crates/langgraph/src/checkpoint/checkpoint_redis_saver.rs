@@ -27,7 +27,7 @@ pub struct RedisSaverConfig {
 impl Default for RedisSaverConfig {
     fn default() -> Self {
         Self {
-            redis_url: "redis://:123456@localhost:6379/0".to_owned(),
+            redis_url: "redis://localhost:6379/0".to_owned(),
             key_prefix: "langchain_rs_checkpoint".to_owned(),
             enable_indexes: true,
         }
