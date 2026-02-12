@@ -121,3 +121,14 @@ Agent 的状态通过 `MessagesState` 管理，它是一个 append-only 的消�
 查看 `crates/langchain/examples` 目录获取更多示例：
 - `agent_openai.rs`: 基础的 OpenAI Agent 示例。
 - `agent_openai_stream.rs`: 流式输出示例（如果存在）。
+
+## 中间件系统
+
+langchain-rs 支持强大的中间件系统，用于扩展和增强 Agent 和工作流的功能。查看以下文档了解详情：
+
+- **[中间件设计指南](./MIDDLEWARE_DESIGN.md)** - 完整的中间件架构设计和实现指南
+- **[中间件示例](./docs/middleware-examples/)** - 可运行的中间件代码示例
+  - 日志记录中间件
+  - 重试中间件
+  - 性能监控中间件
+  - 集成示例
