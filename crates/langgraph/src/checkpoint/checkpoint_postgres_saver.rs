@@ -6,8 +6,8 @@ use std::str::FromStr;
 
 use crate::checkpoint::{
     CheckpointId, CheckpointListResult, CheckpointOrder, CheckpointQuery, CheckpointType,
-    checkpoint_struct_api::{Checkpoint, CheckpointMetadata},
     checkpoint_trait::{CheckpointError, CheckpointStats, Checkpointer, CleanupPolicy},
+    {Checkpoint, CheckpointMetadata},
 };
 
 /// PostgreSQL 检查点保存器配置

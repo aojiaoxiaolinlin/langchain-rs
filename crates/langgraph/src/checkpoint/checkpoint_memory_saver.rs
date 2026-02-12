@@ -6,10 +6,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::checkpoint::checkpoint_struct_api::{Checkpoint, CheckpointMetadata};
 use crate::checkpoint::checkpoint_trait::{
     CheckpointError, CheckpointStats, Checkpointer, CleanupPolicy,
 };
+use crate::checkpoint::{Checkpoint, CheckpointMetadata};
 use crate::checkpoint::{CheckpointId, CheckpointListResult, CheckpointOrder, CheckpointQuery};
 
 pub type MemorySaverStorage = Arc<RwLock<HashMap<String, HashMap<CheckpointId, Vec<u8>>>>>;

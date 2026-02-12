@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 
 use crate::checkpoint::{
-    CheckpointId, CheckpointListResult, CheckpointQuery,
-    checkpoint_struct_api::{Checkpoint, CheckpointMetadata},
+    CheckpointId, CheckpointListResult, CheckpointQuery, {Checkpoint, CheckpointMetadata},
 };
 
 /// 检查点保存器接口

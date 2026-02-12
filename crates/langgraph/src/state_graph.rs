@@ -1,7 +1,6 @@
 use crate::{
     checkpoint::{
-        RunnableConfig,
-        checkpoint_struct_api::{Checkpoint, Checkpointer},
+        RunnableConfig, {Checkpoint, Checkpointer},
     },
     event::GraphEvent,
     graph::{Graph, GraphError},
