@@ -138,11 +138,8 @@ where
         let mut graph: StateGraph<ReactAgentSpec> = StateGraph::new(
             BaseGraphLabel::Start,
             |old: &mut MessagesState, update: MessagesState| {
-                for msg in update.messages {
-                    let exists = old.messages.iter().any(|m| Arc::ptr_eq(m, &msg));
-                    if !exists {
-                        old.push_message(msg);
-                    }
+                if !update.messages.is_empty() {
+                    old.append_messages(update.messages);
                 }
                 old.llm_calls += update.llm_calls;
             },
