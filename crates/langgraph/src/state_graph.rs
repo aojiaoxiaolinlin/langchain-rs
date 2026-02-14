@@ -1,6 +1,6 @@
 use crate::{
     checkpoint::{
-        RunnableConfig, {Checkpoint, Checkpointer},
+        Configuration, {Checkpoint, Checkpointer},
     },
     event::GraphEvent,
     graph::{Graph, GraphError},
@@ -143,7 +143,7 @@ impl<Spec: GraphSpec> StateGraph<Spec> {
         branches: HashMap<InternedGraphLabel, InternedGraphLabel>,
         condition: F,
     ) where
-        F: Fn(&Spec::Update) -> Vec<InternedGraphLabel> + Send + Sync + 'static,
+        F: Fn(&Spec::Update) -> SmallVec<[InternedGraphLabel; 2]> + Send + Sync + 'static,
     {
         self.graph
             .add_node_condition_edge(pred, branches, condition);
@@ -158,7 +158,7 @@ where
     pub async fn run(
         &self,
         mut state: Spec::State,
-        config: &RunnableConfig,
+        config: &Configuration,
         max_steps: usize,
         strategy: RunStrategy,
         resume_from: Option<SmallVec<[String; 4]>>,
@@ -299,7 +299,7 @@ where
     pub fn stream<'a>(
         &'a self,
         mut state: Spec::State,
-        config: &'a RunnableConfig,
+        config: &'a Configuration,
         max_steps: usize,
         strategy: RunStrategy,
         resume_from: Option<SmallVec<[String; 4]>>,
@@ -588,7 +588,7 @@ mod tests {
 
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::B, TestLabel::C);
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (final_state, _) = sg
             .run(0, &config, 10, RunStrategy::PickFirst, None)
             .await
@@ -610,13 +610,13 @@ mod tests {
 
         sg.add_condition_edge(TestLabel::A, branches, |state: &i32| {
             if *state >= 0 {
-                vec![TestBranch::Default.intern()]
+                smallvec::smallvec![TestBranch::Default.intern()]
             } else {
-                Vec::new()
+                smallvec::smallvec![]
             }
         });
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (final_state, _) = sg
             .run(0, &config, 10, RunStrategy::PickFirst, None)
             .await
@@ -637,12 +637,12 @@ mod tests {
 
         sg.add_condition_edge(TestLabel::A, branches, |state: &i32| {
             if *state > 0 {
-                vec![TestBranch::Default.intern()]
+                smallvec::smallvec![TestBranch::Default.intern()]
             } else {
-                Vec::new()
+                smallvec::smallvec![]
             }
         });
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (final_state, _) = sg
             .run(-1, &config, 10, RunStrategy::PickFirst, None)
             .await
@@ -663,7 +663,7 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (final_state, final_nodes) = sg
             .run(0, &config, 10, RunStrategy::StopAtNonLinear, None)
             .await
@@ -688,7 +688,7 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
 
         let (final_state, _) = sg
             .run(0, &config, 10, RunStrategy::PickFirst, None)
@@ -713,7 +713,7 @@ mod tests {
         sg.add_edge(TestLabel::A, TestLabel::B);
         sg.add_edge(TestLabel::A, TestLabel::C);
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (final_state, _) = sg
             .run(0, &config, 10, RunStrategy::PickLast, None)
             .await
@@ -759,7 +759,7 @@ mod tests {
                 *state = update.parse::<i32>().unwrap();
             });
         sg.add_node(TestLabel::A, StringNode);
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (final_state, _) = sg
             .run(0, &config, 1, RunStrategy::PickFirst, None)
             .await
@@ -794,7 +794,7 @@ mod tests {
         // Parallel strategy applies reducer sequentially for updates.
         // reducer(1, 2) -> 3.
         // reducer(3, 2) -> 5.
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (final_state, _) = sg
             .run(0, &config, 10, RunStrategy::Parallel, None)
             .await
@@ -867,7 +867,7 @@ mod tests {
         // Step 1: A runs. Output "A". State ["A"]. Next [B, C].
         // Step 2: B, C run. Output "B", "C". State ["A", "B", "C"]. Next [D, E].
         // Step 3: D, E run. Output "D", "E". State ["A", "B", "C", "D", "E"]. Next [].
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (final_state, _) = sg
             .run(Vec::new(), &config, 10, RunStrategy::Parallel, None)
             .await

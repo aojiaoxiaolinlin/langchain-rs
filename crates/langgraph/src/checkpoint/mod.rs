@@ -20,9 +20,14 @@ pub use checkpoint_redis_saver::*;
 pub use checkpoint_sqlite_saver::*;
 pub use checkpoint_trait::*;
 
+#[derive(Debug, Clone, Default)]
+pub struct AgentRuntime {
+    pub configuration: Configuration,
+}
+
 /// 运行配置
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct RunnableConfig {
+pub struct Configuration {
     /// 线程 ID，用于隔离不同的对话或执行流
     pub thread_id: Option<String>,
     /// 响应格式

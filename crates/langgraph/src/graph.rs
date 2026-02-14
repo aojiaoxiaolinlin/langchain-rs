@@ -1,4 +1,5 @@
 use async_stream::stream;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use thiserror::Error;
@@ -75,14 +76,14 @@ impl<I, O, E: std::fmt::Debug, Ev: std::fmt::Debug> Graph<I, O, E, Ev> {
         condition: F,
     ) -> Result<(), GraphError<E>>
     where
-        F: Fn(&O) -> Vec<InternedGraphLabel> + Send + Sync + 'static,
+        F: Fn(&O) -> SmallVec<[InternedGraphLabel; 2]> + Send + Sync + 'static,
     {
         let branch_keys: std::collections::HashSet<_> = branches.keys().copied().collect();
 
         // 以后有必要再为每个条件分支设计单独的分支类型，这样做next_nodes的Key就得使用Box<dyn BranchKind>，目前没得必要
         // 检查 condition 是否返回的分支都在 branches 中
         let wrapped: EdgeCondition<O> = Box::new(move |o: &O| {
-            let result = condition(o);
+            let result: SmallVec<[_; 2]> = condition(o);
             assert!(
                 result.iter().all(|b| branch_keys.contains(b)),
                 "Edge::conditional: condition returned branch not in branches map"
@@ -125,7 +126,7 @@ impl<I, O, E: std::fmt::Debug, Ev: std::fmt::Debug> Graph<I, O, E, Ev> {
         branches: HashMap<InternedGraphLabel, InternedGraphLabel>,
         condition: F,
     ) where
-        F: Fn(&O) -> Vec<InternedGraphLabel> + Send + Sync + 'static,
+        F: Fn(&O) -> SmallVec<[InternedGraphLabel; 2]> + Send + Sync + 'static,
     {
         self.try_add_node_condition_edge(pred_node, branches, condition)
             .unwrap();
@@ -287,7 +288,7 @@ pub enum GraphError<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checkpoint::RunnableConfig;
+    use crate::checkpoint::Configuration;
     use crate::label::GraphLabel;
     use crate::node::{EventSink, Node, NodeContext, NodeError};
     use async_trait::async_trait;
@@ -452,9 +453,9 @@ mod tests {
         graph
             .try_add_node_condition_edge(TestLabel::A, branches.clone(), |output: &i32| {
                 if *output > 0 {
-                    vec![TestBranch::Default.intern()]
+                    smallvec::smallvec![TestBranch::Default.intern()]
                 } else {
-                    Vec::new()
+                    smallvec::smallvec![]
                 }
             })
             .unwrap();
@@ -475,7 +476,9 @@ mod tests {
                 assert!(next_nodes.contains(&(branch_key, *target_node)));
 
                 let result = (condition)(&1);
-                assert_eq!(result, vec![TestBranch::Default.intern()]);
+                let small_vec: SmallVec<[InternedGraphLabel; 2]> =
+                    smallvec::smallvec![TestBranch::Default.intern()];
+                assert_eq!(result, small_vec);
             }
             _ => panic!("expected ConditionalEdge"),
         }
@@ -494,7 +497,7 @@ mod tests {
         graph.add_node_edge(TestLabel::A, TestLabel::B);
 
         let a_label = TestLabel::A.intern();
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let mut stream = graph
             .run_stream(a_label, &0, NodeContext::from_config(&config))
             .await
@@ -553,7 +556,7 @@ mod tests {
         graph.add_node_edge(TestLabel::A, TestLabel::B);
 
         let a_label = TestLabel::A.intern();
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (output, next) = graph
             .run_once(a_label, &0, NodeContext::from_config(&config))
             .await
@@ -575,7 +578,7 @@ mod tests {
         graph.add_node_edge(TestLabel::A, TestLabel::B);
 
         let a_label = TestLabel::A.intern();
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let (output, next) = graph
             .run_once(a_label, &0, NodeContext::from_config(&config))
             .await
