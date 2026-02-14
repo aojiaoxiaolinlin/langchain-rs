@@ -29,7 +29,7 @@ use tracing::debug;
 pub use node::llm::LlmNode;
 pub use node::tool::ToolNode;
 
-use crate::node::middleware::{AgentMiddleware, AgentMiddlewareNode};
+use crate::node::middleware::{AgentHook, AgentMiddleware, AgentMiddlewareNode};
 
 /// Specification for the React Agent Graph
 pub struct ReactAgentSpec;
@@ -161,54 +161,41 @@ where
         let mut after_model_nodes: SmallVec<[_; 4]> = smallvec![];
         let mut after_agent_nodes: SmallVec<[_; 4]> = smallvec![];
 
+        let mut add_node = |nodes: &mut SmallVec<[AgentMiddlewareEdge; 4]>,
+                            hook: Option<AgentHook<MessagesState>>,
+                            label: InternedGraphLabel| {
+            if let Some(hook) = hook {
+                let node = AgentMiddlewareNode::new(hook.handler);
+                nodes.push(AgentMiddlewareEdge {
+                    label,
+                    target: hook.target,
+                    branches: hook.branches,
+                });
+                graph.add_node(label, node);
+            }
+        };
+
         self.middlewares.into_iter().for_each(|middleware| {
-            if let Some(before_agent) = middleware.before_agent {
-                let before_agent_node = AgentMiddlewareNode::new(before_agent.handler);
-                let label = middleware.label.before_agent.intern();
-
-                before_agent_nodes.push(AgentMiddlewareEdge {
-                    label,
-                    target: before_agent.target,
-                    branches: before_agent.branches,
-                });
-                graph.add_node(label, before_agent_node);
-            }
-
-            if let Some(before_model) = middleware.before_model {
-                let before_model_node = AgentMiddlewareNode::new(before_model.handler);
-                let label = middleware.label.before_model.intern();
-
-                before_model_nodes.push(AgentMiddlewareEdge {
-                    label,
-                    target: before_model.target,
-                    branches: before_model.branches,
-                });
-                graph.add_node(label, before_model_node);
-            }
-
-            if let Some(after_model) = middleware.after_model {
-                let after_model_node = AgentMiddlewareNode::new(after_model.handler);
-                let label = middleware.label.after_model.intern();
-
-                after_model_nodes.push(AgentMiddlewareEdge {
-                    label,
-                    target: after_model.target,
-                    branches: after_model.branches,
-                });
-                graph.add_node(label, after_model_node);
-            }
-
-            if let Some(after_agent) = middleware.after_agent {
-                let after_agent_node = AgentMiddlewareNode::new(after_agent.handler);
-                let label = middleware.label.after_agent.intern();
-
-                after_agent_nodes.push(AgentMiddlewareEdge {
-                    label,
-                    target: after_agent.target,
-                    branches: after_agent.branches,
-                });
-                graph.add_node(label, after_agent_node);
-            }
+            add_node(
+                &mut before_agent_nodes,
+                middleware.before_agent,
+                middleware.label.before_agent,
+            );
+            add_node(
+                &mut before_model_nodes,
+                middleware.before_model,
+                middleware.label.before_model,
+            );
+            add_node(
+                &mut after_model_nodes,
+                middleware.after_model,
+                middleware.label.after_model,
+            );
+            add_node(
+                &mut after_agent_nodes,
+                middleware.after_agent,
+                middleware.label.after_agent,
+            );
         });
 
         graph.add_node(
@@ -341,12 +328,10 @@ fn apply_middleware_chain(
         graph.add_condition_edge(current_label, branches, move |state: &MessagesState| {
             if let Some(target) = target {
                 smallvec![target]
+            } else if check_tool_calls && is_last && state.last_tool_calls().is_some() {
+                smallvec![ReactAgentLabel::Tool.intern()]
             } else {
-                if check_tool_calls && is_last && state.last_tool_calls().is_some() {
-                    smallvec![ReactAgentLabel::Tool.intern()]
-                } else {
-                    smallvec![next]
-                }
+                smallvec![next]
             }
         });
     }
