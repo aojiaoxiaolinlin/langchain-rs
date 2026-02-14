@@ -266,7 +266,7 @@ where
         );
 
         graph.add_edge(BaseGraphLabel::Start, before_agent_entry);
-        graph.add_edge(ReactAgentLabel::Tool, ReactAgentLabel::Llm);
+        graph.add_edge(ReactAgentLabel::Tool, before_model_entry);
 
         ReactAgent {
             graph,
