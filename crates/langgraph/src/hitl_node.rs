@@ -168,7 +168,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{checkpoint::RunnableConfig, interrupt::InMemoryInterruptManager};
+    use crate::{checkpoint::Configuration, interrupt::InMemoryInterruptManager};
 
     #[tokio::test]
     async fn test_hitl_node_confirm() {
@@ -197,7 +197,7 @@ mod tests {
             Ok::<(), InterruptError>(())
         });
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         // 执行节点
         let result = node
             .run_sync(&MessagesState::default(), NodeContext::from_config(&config))
@@ -240,7 +240,7 @@ mod tests {
                 .unwrap();
         });
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let result = node
             .run_sync(&MessagesState::default(), NodeContext::from_config(&config))
             .await;
@@ -277,7 +277,7 @@ mod tests {
                 .unwrap();
         });
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let result = node
             .run_sync(&MessagesState::default(), NodeContext::from_config(&config))
             .await;
@@ -301,7 +301,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
 
         // 再次尝试等待响应（使用非常短的超时）
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let result = tokio::time::timeout(
             tokio::time::Duration::from_millis(50),
             node.run_sync(&MessagesState::default(), NodeContext::from_config(&config)),
@@ -336,7 +336,7 @@ mod tests {
                 .unwrap();
         });
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let result = node
             .run_sync(&MessagesState::default(), NodeContext::from_config(&config))
             .await;
@@ -382,7 +382,7 @@ mod tests {
                 .unwrap();
         });
 
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let result = node
             .run_sync(&MessagesState::default(), NodeContext::from_config(&config))
             .await;
@@ -424,7 +424,7 @@ mod tests {
                 .await
                 .unwrap();
         });
-        let config = RunnableConfig::default();
+        let config = Configuration::default();
         let result = node
             .run_sync(&MessagesState::default(), NodeContext::from_config(&config))
             .await;

@@ -8,24 +8,24 @@ use futures::Stream;
 use langchain_core::store::BaseStore;
 use thiserror::Error;
 
-use crate::{checkpoint::RunnableConfig, edge::Edge, label::InternedGraphLabel};
+use crate::{checkpoint::Configuration, edge::Edge, label::InternedGraphLabel};
 
 /// 节点执行上下文
 pub struct NodeContext<'a> {
     /// 共享存储
     pub store: Option<Arc<dyn BaseStore>>,
     /// 运行时配置
-    pub config: &'a RunnableConfig,
+    pub config: &'a Configuration,
 }
 
 impl<'a> NodeContext<'a> {
-    pub fn from_config(config: &'a RunnableConfig) -> Self {
+    pub fn from_config(config: &'a Configuration) -> Self {
         Self {
             store: None,
             config,
         }
     }
-    pub fn new(store: Option<Arc<dyn BaseStore>>, config: &'a RunnableConfig) -> Self {
+    pub fn new(store: Option<Arc<dyn BaseStore>>, config: &'a Configuration) -> Self {
         Self { store, config }
     }
 }

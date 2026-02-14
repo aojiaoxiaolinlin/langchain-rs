@@ -301,13 +301,13 @@ impl ReactAgent {
     pub async fn invoke(
         &self,
         message: Message,
-        config: Option<&RunnableConfig>
+        config: Option<&Configuration>
     ) -> Result<MessagesState, AgentError>;
 
     pub async fn stream(
         &self,
         message: Message,
-        config: Option<&RunnableConfig>
+        config: Option<&Configuration>
     ) -> Result<impl Stream<Item = ChatStreamEvent>, AgentError>;
 }
 

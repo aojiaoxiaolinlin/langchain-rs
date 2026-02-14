@@ -2,7 +2,7 @@ use crate::label::InternedGraphLabel;
 use smallvec::SmallVec;
 
 /// 条件边的条件函数，输入为边的输出，输出为后继节点标签列表
-pub type EdgeCondition<O> = Box<dyn Fn(&O) -> Vec<InternedGraphLabel> + Send + Sync>;
+pub type EdgeCondition<O> = Box<dyn Fn(&O) -> SmallVec<[InternedGraphLabel; 2]> + Send + Sync>;
 
 pub enum Edge<O> {
     /// 普通边，直接连接两个节点

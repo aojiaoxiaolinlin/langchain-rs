@@ -27,7 +27,7 @@ langgraph-checkpoint-postgres = "0.1"
 
 ```rust
 use langgraph_checkpoint_postgres::PostgresCheckpointer;
-use langgraph::checkpoint::RunnableConfig;
+use langgraph::checkpoint::Configuration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     checkpointer.migrate().await?;
 
     // 使用配置
-    let config = RunnableConfig {
+    let config = Configuration {
         thread_id: "conversation-1".to_string(),
         checkpoint_id: None,
     };
@@ -90,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
     let graph = graph.with_checkpointer(checkpointer);
 
     // 执行图（自动保存 checkpoint）
-    let config = RunnableConfig {
+    let config = Configuration {
         thread_id: "my-thread".to_string(),
         checkpoint_id: None,
     };

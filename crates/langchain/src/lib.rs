@@ -1,3 +1,5 @@
+pub mod node;
+
 use std::{collections::HashMap, error::Error, marker::PhantomData, sync::Arc};
 
 use futures::{Stream, StreamExt};
@@ -8,24 +10,26 @@ use langchain_core::{
     state::{AgentState, ChatModel, ChatStreamEvent, MessagesState, RegisteredTool, ToolFn},
     store::BaseStore,
 };
+use langgraph::label::InternedGraphLabel;
 use langgraph::{
     checkpoint::{
-        RunnableConfig, {Checkpoint, Checkpointer},
+        Configuration, {Checkpoint, Checkpointer},
     },
     graph::GraphError,
     label::{BaseGraphLabel, GraphLabel},
     state_graph::{GraphSpec, RunStrategy, StateGraph},
 };
+use node::identity::IdentityNode;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
 use thiserror::Error;
 use tracing::debug;
 
-pub mod node;
-use node::identity::IdentityNode;
 pub use node::llm::LlmNode;
 pub use node::tool::ToolNode;
+
+use crate::node::middleware::{AgentHook, AgentMiddleware, AgentMiddlewareNode};
 
 /// Specification for the React Agent Graph
 pub struct ReactAgentSpec;
@@ -73,6 +77,7 @@ pub struct ReactAgentBuilder<M> {
     system_prompt: Option<String>,
     store: Option<Arc<dyn BaseStore>>,
     checkpointer: Option<Arc<dyn Checkpointer<MessagesState>>>,
+    middlewares: SmallVec<[AgentMiddleware<MessagesState>; 4]>,
 }
 
 impl<M> ReactAgentBuilder<M>
@@ -86,6 +91,7 @@ where
             system_prompt: None,
             store: None,
             checkpointer: None,
+            middlewares: SmallVec::new(),
         }
     }
 
@@ -94,8 +100,11 @@ where
         self
     }
 
-    pub fn with_tools(mut self, tools: Vec<RegisteredTool<ToolError>>) -> Self {
-        self.tools = tools;
+    pub fn with_tools<I>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = RegisteredTool<ToolError>>,
+    {
+        self.tools = tools.into_iter().collect();
         self
     }
 
@@ -114,6 +123,14 @@ where
         self
     }
 
+    pub fn with_middlewares<I>(mut self, middlewares: I) -> Self
+    where
+        I: IntoIterator<Item = AgentMiddleware<MessagesState>>,
+    {
+        self.middlewares = middlewares.into_iter().collect();
+        self
+    }
+
     /// Transforms this builder into a structured agent builder
     pub fn build(self) -> ReactAgent {
         let (tool_specs, tools) = parse_tool(self.tools);
@@ -121,7 +138,9 @@ where
         let mut graph: StateGraph<ReactAgentSpec> = StateGraph::new(
             BaseGraphLabel::Start,
             |old: &mut MessagesState, update: MessagesState| {
-                old.append_messages(update.messages);
+                if !update.messages.is_empty() {
+                    old.append_messages(update.messages);
+                }
                 old.llm_calls += update.llm_calls;
             },
         );
@@ -133,6 +152,48 @@ where
         if let Some(checkpointer) = self.checkpointer {
             graph = graph.with_shared_checkpointer(checkpointer);
         }
+
+        let mut before_agent_nodes: SmallVec<[_; 4]> = smallvec![];
+        let mut before_model_nodes: SmallVec<[_; 4]> = smallvec![];
+        let mut after_model_nodes: SmallVec<[_; 4]> = smallvec![];
+        let mut after_agent_nodes: SmallVec<[_; 4]> = smallvec![];
+
+        let mut add_node = |nodes: &mut SmallVec<[AgentMiddlewareEdge; 4]>,
+                            hook: Option<AgentHook<MessagesState>>,
+                            label: InternedGraphLabel| {
+            if let Some(hook) = hook {
+                let node = AgentMiddlewareNode::new(hook.handler);
+                nodes.push(AgentMiddlewareEdge {
+                    label,
+                    target: hook.target,
+                    branches: hook.branches,
+                });
+                graph.add_node(label, node);
+            }
+        };
+
+        self.middlewares.into_iter().for_each(|middleware| {
+            add_node(
+                &mut before_agent_nodes,
+                middleware.before_agent,
+                middleware.label.before_agent,
+            );
+            add_node(
+                &mut before_model_nodes,
+                middleware.before_model,
+                middleware.label.before_model,
+            );
+            add_node(
+                &mut after_model_nodes,
+                middleware.after_model,
+                middleware.label.after_model,
+            );
+            add_node(
+                &mut after_agent_nodes,
+                middleware.after_agent,
+                middleware.label.after_agent,
+            );
+        });
 
         graph.add_node(
             BaseGraphLabel::Start,
@@ -149,22 +210,62 @@ where
         graph.add_node(ReactAgentLabel::Llm, LlmNode::new(self.model, tool_specs));
         graph.add_node(ReactAgentLabel::Tool, ToolNode::new(tools));
 
-        let mut branches = HashMap::new();
-        branches.insert(
-            ReactAgentLabel::Tool.intern(),
-            ReactAgentLabel::Tool.intern(),
+        let after_agent_entry = apply_middleware_chain(
+            &mut graph,
+            &after_agent_nodes,
+            BaseGraphLabel::End.intern(),
+            true,
+            false,
         );
-        branches.insert(BaseGraphLabel::End.intern(), BaseGraphLabel::End.intern());
 
-        graph.add_edge(BaseGraphLabel::Start, ReactAgentLabel::Llm);
-        graph.add_condition_edge(ReactAgentLabel::Llm, branches, |state: &MessagesState| {
-            if state.last_tool_calls().is_some() {
-                vec![ReactAgentLabel::Tool.intern()]
-            } else {
-                vec![BaseGraphLabel::End.intern()]
-            }
-        });
+        let after_model_entry = apply_middleware_chain(
+            &mut graph,
+            &after_model_nodes,
+            after_agent_entry,
+            true,
+            true,
+        );
 
+        if !after_model_nodes.is_empty() {
+            graph.add_edge(ReactAgentLabel::Llm, after_model_entry);
+        } else {
+            let mut branches = HashMap::new();
+            branches.insert(after_agent_entry, after_agent_entry);
+            branches.insert(
+                ReactAgentLabel::Tool.intern(),
+                ReactAgentLabel::Tool.intern(),
+            );
+
+            graph.add_condition_edge(
+                ReactAgentLabel::Llm,
+                branches,
+                move |state: &MessagesState| {
+                    if state.last_tool_calls().is_some() {
+                        smallvec![ReactAgentLabel::Tool.intern()]
+                    } else {
+                        smallvec![after_agent_entry]
+                    }
+                },
+            );
+        }
+
+        let before_model_entry = apply_middleware_chain(
+            &mut graph,
+            &before_model_nodes,
+            ReactAgentLabel::Llm.intern(),
+            false,
+            false,
+        );
+
+        let before_agent_entry = apply_middleware_chain(
+            &mut graph,
+            &before_agent_nodes,
+            before_model_entry,
+            false,
+            false,
+        );
+
+        graph.add_edge(BaseGraphLabel::Start, before_agent_entry);
         graph.add_edge(ReactAgentLabel::Tool, ReactAgentLabel::Llm);
 
         ReactAgent {
@@ -172,6 +273,67 @@ where
             system_prompt: self.system_prompt,
         }
     }
+}
+
+struct AgentMiddlewareEdge {
+    label: InternedGraphLabel,
+    target: Option<InternedGraphLabel>,
+    branches: SmallVec<[InternedGraphLabel; 2]>,
+}
+
+fn apply_middleware_chain(
+    graph: &mut StateGraph<ReactAgentSpec>,
+    nodes: &[AgentMiddlewareEdge],
+    next_label: InternedGraphLabel,
+    reverse: bool,
+    check_tool_calls: bool,
+) -> InternedGraphLabel {
+    if nodes.is_empty() {
+        return next_label;
+    }
+
+    let execution_sequence: Vec<&AgentMiddlewareEdge> = if reverse {
+        nodes.iter().rev().collect()
+    } else {
+        nodes.iter().collect()
+    };
+
+    for (i, node) in execution_sequence.iter().enumerate() {
+        let current_label = node.label;
+        let target = node.target;
+
+        let is_last = i == execution_sequence.len() - 1;
+        let next = if is_last {
+            next_label
+        } else {
+            execution_sequence[i + 1].label
+        };
+
+        let mut branches = node
+            .branches
+            .iter()
+            .map(|&l| (l, l))
+            .collect::<HashMap<_, _>>();
+        branches.insert(next, next);
+        if check_tool_calls && is_last {
+            branches.insert(
+                ReactAgentLabel::Tool.intern(),
+                ReactAgentLabel::Tool.intern(),
+            );
+        }
+
+        graph.add_condition_edge(current_label, branches, move |state: &MessagesState| {
+            if let Some(target) = target {
+                smallvec![target]
+            } else if check_tool_calls && is_last && state.last_tool_calls().is_some() {
+                smallvec![ReactAgentLabel::Tool.intern()]
+            } else {
+                smallvec![next]
+            }
+        });
+    }
+
+    execution_sequence[0].label
 }
 
 pub struct ReactAgent {
@@ -200,11 +362,11 @@ impl ReactAgent {
         thread_id: Option<&str>,
     ) -> Result<MessagesState, AgentError> {
         let config = thread_id.map_or(
-            RunnableConfig {
+            Configuration {
                 thread_id: None,
                 response_format: None,
             },
-            |thread_id| RunnableConfig {
+            |thread_id| Configuration {
                 thread_id: Some(thread_id.to_owned()),
                 response_format: None,
             },
@@ -256,11 +418,11 @@ impl ReactAgent {
         };
 
         let config = thread_id.map_or(
-            RunnableConfig {
+            Configuration {
                 thread_id: None,
                 response_format: response_format.clone(),
             },
-            |thread_id| RunnableConfig {
+            |thread_id| Configuration {
                 thread_id: Some(thread_id.to_owned()),
                 response_format,
             },
@@ -304,11 +466,11 @@ impl ReactAgent {
         let graph = &self.graph;
 
         let config = thread_id.map_or(
-            RunnableConfig {
+            Configuration {
                 thread_id: None,
                 response_format: None,
             },
-            |thread_id| RunnableConfig {
+            |thread_id| Configuration {
                 thread_id: Some(thread_id.to_owned()),
                 response_format: None,
             },
@@ -338,7 +500,7 @@ impl ReactAgent {
 
     async fn get_state(
         &self,
-        config: &RunnableConfig,
+        config: &Configuration,
     ) -> (MessagesState, Option<SmallVec<[String; 4]>>) {
         if let Some(checkpointer) = &self.graph.checkpointer
             && let Some(thread_id) = &config.thread_id
