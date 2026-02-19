@@ -6,7 +6,6 @@ use langgraph::{
     label::InternedGraphLabel,
     node::{Node, NodeContext},
 };
-use smallvec::SmallVec;
 
 use crate::AgentError;
 
@@ -71,7 +70,7 @@ pub struct MiddlewareLabel {
 pub struct AgentHook<S: Default> {
     pub handler: MiddlewareHandler<S>,
     pub target: Option<InternedGraphLabel>,
-    pub branches: SmallVec<[InternedGraphLabel; 2]>,
+    pub branches: Vec<InternedGraphLabel>,
 }
 
 #[macro_export]

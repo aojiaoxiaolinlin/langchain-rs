@@ -7,7 +7,6 @@ use langchain_openai::ChatOpenAIBuilder;
 use langgraph::node::NodeContext;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use smallvec::smallvec;
 use std::{env, sync::Arc};
 use tracing_subscriber::EnvFilter;
 
@@ -41,7 +40,7 @@ async fn main() {
                 Box::pin(async move { Ok(MessagesState::default()) })
             }),
             target: None,
-            branches: smallvec![],
+            branches: vec![],
         })
         .with_before_model(AgentHook {
             handler: Arc::new(|state: &MessagesState, _: &NodeContext| {
@@ -49,7 +48,7 @@ async fn main() {
                 Box::pin(async move { Ok(MessagesState::default()) })
             }),
             target: None,
-            branches: smallvec![],
+            branches: vec![],
         })
         .with_after_model(AgentHook {
             handler: Arc::new(|state: &MessagesState, _: &NodeContext| {
@@ -57,7 +56,7 @@ async fn main() {
                 Box::pin(async move { Ok(MessagesState::default()) })
             }),
             target: None,
-            branches: smallvec![],
+            branches: vec![],
         })
         .with_after_agent(AgentHook {
             handler: Arc::new(|state: &MessagesState, _: &NodeContext| {
@@ -65,7 +64,7 @@ async fn main() {
                 Box::pin(async move { Ok(MessagesState::default()) })
             }),
             target: None,
-            branches: smallvec![],
+            branches: vec![],
         });
 
     let agent = ReactAgent::builder(model)

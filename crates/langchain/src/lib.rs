@@ -278,7 +278,7 @@ where
 struct AgentMiddlewareEdge {
     label: InternedGraphLabel,
     target: Option<InternedGraphLabel>,
-    branches: SmallVec<[InternedGraphLabel; 2]>,
+    branches: Vec<InternedGraphLabel>,
 }
 
 fn apply_middleware_chain(
