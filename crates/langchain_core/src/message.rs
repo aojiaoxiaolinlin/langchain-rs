@@ -20,6 +20,8 @@ pub enum Message {
     Assistant {
         /// 消息内容
         content: String,
+        /// 思考内容
+        reasoning_content: Option<String>,
         /// 可选填的工具调用列表
         #[serde(skip_serializing_if = "Option::is_none")]
         tool_calls: Option<Vec<ToolCall>>,
@@ -99,6 +101,7 @@ impl Message {
     pub fn assistant<S: Into<String>>(content: S) -> Self {
         Self::Assistant {
             content: content.into(),
+            reasoning_content: None,
             tool_calls: None,
             name: None,
         }
@@ -113,6 +116,7 @@ impl Message {
     pub fn assistant_with_name<S: Into<String>, N: Into<String>>(content: S, name: N) -> Self {
         Self::Assistant {
             content: content.into(),
+            reasoning_content: None,
             tool_calls: None,
             name: Some(name.into()),
         }

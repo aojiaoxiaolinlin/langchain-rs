@@ -271,6 +271,12 @@ impl ChatModel for ChatOpenAI {
                                 yield ChatStreamEvent::Content(content.to_owned());
                             }
 
+                            if let Some(reasoning_content) = delta.get("reasoning_content").and_then(|c| c.as_str())
+                                && !reasoning_content.is_empty()
+                            {
+                                yield ChatStreamEvent::ReasoningContent(reasoning_content.to_owned());
+                            }
+
                             if let Some(tool_calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
                                 for call in tool_calls {
                                     let index = call

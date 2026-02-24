@@ -534,13 +534,14 @@ mod tests {
 
     use super::*;
     use crate::label::GraphLabel;
-    use crate::node::{EventSink, Node, NodeContext, NodeError};
+    use crate::node::{EventSink, Node, NodeContext};
+    use std::convert::Infallible;
 
     struct TestSpec;
     impl GraphSpec for TestSpec {
         type State = i32;
         type Update = i32;
-        type Error = NodeError;
+        type Error = Infallible;
         type Event = ();
     }
 
@@ -555,8 +556,8 @@ mod tests {
     struct AddOne;
 
     #[async_trait]
-    impl Node<i32, i32, NodeError, ()> for AddOne {
-        async fn run_sync(&self, input: &i32, _context: NodeContext<'_>) -> Result<i32, NodeError> {
+    impl Node<i32, i32, Infallible, ()> for AddOne {
+        async fn run_sync(&self, input: &i32, _context: NodeContext<'_>) -> Result<i32, Infallible> {
             Ok(*input + 1)
         }
 
@@ -565,7 +566,7 @@ mod tests {
             input: &i32,
             _sink: &dyn EventSink<()>,
             _context: NodeContext<'_>,
-        ) -> Result<i32, NodeError> {
+        ) -> Result<i32, Infallible> {
             Ok(*input + 1)
         }
     }
@@ -818,7 +819,7 @@ mod tests {
         impl GraphSpec for VecSpec {
             type State = Vec<String>;
             type Update = String;
-            type Error = NodeError;
+            type Error = Infallible;
             type Event = ();
         }
 
@@ -831,12 +832,12 @@ mod tests {
         #[derive(Debug)]
         struct NameNode(&'static str);
         #[async_trait]
-        impl Node<Vec<String>, String, NodeError, ()> for NameNode {
+        impl Node<Vec<String>, String, Infallible, ()> for NameNode {
             async fn run_sync(
                 &self,
                 _: &Vec<String>,
                 _context: NodeContext<'_>,
-            ) -> Result<String, NodeError> {
+            ) -> Result<String, Infallible> {
                 Ok(self.0.to_owned())
             }
             async fn run_stream(
@@ -844,7 +845,7 @@ mod tests {
                 _: &Vec<String>,
                 _: &dyn EventSink<()>,
                 _context: NodeContext<'_>,
-            ) -> Result<String, NodeError> {
+            ) -> Result<String, Infallible> {
                 Ok(self.0.to_owned())
             }
         }

@@ -290,8 +290,9 @@ mod tests {
     use super::*;
     use crate::checkpoint::Configuration;
     use crate::label::GraphLabel;
-    use crate::node::{EventSink, Node, NodeContext, NodeError};
+    use crate::node::{EventSink, Node, NodeContext};
     use async_trait::async_trait;
+    use std::convert::Infallible;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, GraphLabel)]
     enum TestLabel {
@@ -304,8 +305,8 @@ mod tests {
     struct IncNode;
 
     #[async_trait]
-    impl Node<i32, i32, NodeError, ()> for IncNode {
-        async fn run_sync(&self, input: &i32, _context: NodeContext<'_>) -> Result<i32, NodeError> {
+    impl Node<i32, i32, Infallible, ()> for IncNode {
+        async fn run_sync(&self, input: &i32, _context: NodeContext<'_>) -> Result<i32, Infallible> {
             Ok(*input + 1)
         }
 
@@ -314,7 +315,7 @@ mod tests {
             input: &i32,
             _sink: &dyn EventSink<()>,
             _context: NodeContext<'_>,
-        ) -> Result<i32, NodeError> {
+        ) -> Result<i32, Infallible> {
             Ok(*input + 1)
         }
     }
@@ -330,8 +331,8 @@ mod tests {
     struct StreamNode;
 
     #[async_trait]
-    impl Node<i32, i32, NodeError, i32> for StreamNode {
-        async fn run_sync(&self, input: &i32, _context: NodeContext<'_>) -> Result<i32, NodeError> {
+    impl Node<i32, i32, Infallible, i32> for StreamNode {
+        async fn run_sync(&self, input: &i32, _context: NodeContext<'_>) -> Result<i32, Infallible> {
             Ok(*input + 1)
         }
 
@@ -340,7 +341,7 @@ mod tests {
             input: &i32,
             sink: &dyn EventSink<i32>,
             _context: NodeContext<'_>,
-        ) -> Result<i32, NodeError> {
+        ) -> Result<i32, Infallible> {
             let value = *input + 1;
             sink.emit(1).await;
             sink.emit(2).await;
@@ -351,7 +352,7 @@ mod tests {
 
     #[test]
     fn add_node_and_edge_should_link_successor() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 
@@ -374,7 +375,7 @@ mod tests {
 
     #[test]
     fn add_node_edges_should_link_all_successors_in_chain() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 
@@ -409,7 +410,7 @@ mod tests {
 
     #[test]
     fn duplicate_edge_returns_error() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 
@@ -425,7 +426,7 @@ mod tests {
 
     #[test]
     fn add_node_edges_with_single_node_creates_no_edges() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 
@@ -440,7 +441,7 @@ mod tests {
 
     #[test]
     fn add_condition_edge_stores_branches_and_condition() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 
@@ -488,7 +489,7 @@ mod tests {
     async fn run_stream_emits_events_and_collects_successors() {
         use futures::StreamExt;
 
-        let mut graph: Graph<i32, i32, NodeError, i32> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, i32> = Graph {
             nodes: HashMap::new(),
         };
 
@@ -546,7 +547,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_once_executes_and_collects_successors() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 
@@ -568,7 +569,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_once_with_mode_sync_executes_correctly() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 

@@ -120,6 +120,7 @@ pub struct ChatCompletion {
 #[derive(Debug, Clone)]
 pub enum ChatStreamEvent {
     Content(String),
+    ReasoningContent(String),
     ToolCallDelta {
         index: usize,
         id: Option<String>,

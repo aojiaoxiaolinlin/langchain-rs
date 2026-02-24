@@ -185,49 +185,6 @@ impl LangChainError for GraphError {
     }
 }
 
-/// 存储错误
-#[derive(Debug, Error)]
-pub enum StorageError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Serialization error: {0}")]
-    Serialization(String),
-
-    #[error("Deserialization error: {0}")]
-    Deserialization(String),
-
-    #[error("Storage backend error: {0}")]
-    Backend(String),
-
-    #[error("Key not found: {0}")]
-    KeyNotFound(String),
-
-    #[error("Storage full")]
-    StorageFull,
-}
-
-impl LangChainError for StorageError {
-    fn category(&self) -> ErrorCategory {
-        match self {
-            StorageError::Io(_) => ErrorCategory::Transient,
-            StorageError::Serialization(_) => ErrorCategory::Internal,
-            StorageError::Deserialization(_) => ErrorCategory::Internal,
-            StorageError::Backend(_) => ErrorCategory::External,
-            StorageError::KeyNotFound(_) => ErrorCategory::Validation,
-            StorageError::StorageFull => ErrorCategory::Transient,
-        }
-    }
-
-    fn retry_delay_ms(&self) -> Option<u64> {
-        match self {
-            StorageError::Io(_) => Some(1000),
-            StorageError::StorageFull => Some(5000),
-            _ => None,
-        }
-    }
-}
-
 /// 验证错误
 #[derive(Debug, Error)]
 pub enum ValidationError {

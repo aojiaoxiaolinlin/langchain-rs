@@ -106,6 +106,7 @@ where
             .map_err(AgentError::Model)?;
 
         let mut content = String::new();
+        let mut reasoning_content = String::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
 
         let mut raw_args = String::new();
@@ -117,6 +118,9 @@ where
             match event {
                 ChatStreamEvent::Content(chunk) => {
                     content.push_str(&chunk);
+                }
+                ChatStreamEvent::ReasoningContent(chunk) => {
+                    reasoning_content.push_str(&chunk);
                 }
                 ChatStreamEvent::ToolCallDelta {
                     index,
@@ -166,6 +170,11 @@ where
         if !content.is_empty() || !tool_calls.is_empty() {
             let assistant = Message::Assistant {
                 content,
+                reasoning_content: if reasoning_content.is_empty() {
+                    None
+                } else {
+                    Some(reasoning_content)
+                },
                 tool_calls: if tool_calls.is_empty() {
                     None
                 } else {

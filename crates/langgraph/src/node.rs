@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use downcast_rs::{Downcast, impl_downcast};
 use futures::Stream;
 use langchain_core::store::BaseStore;
-use thiserror::Error;
 
 use crate::{checkpoint::Configuration, edge::Edge, label::InternedGraphLabel};
 
@@ -29,9 +28,6 @@ impl<'a> NodeContext<'a> {
         Self { store, config }
     }
 }
-
-#[derive(Debug, Error)]
-pub enum NodeError {}
 
 #[async_trait]
 pub trait EventSink<Ev>: Send + Sync {

@@ -591,6 +591,7 @@ mod tests {
             };
 
             let msg = Message::Assistant {
+                reasoning_content: None,
                 content: "assistant".to_owned(),
                 tool_calls,
                 name: None,
@@ -612,6 +613,7 @@ mod tests {
             use async_stream::try_stream;
 
             let stream = try_stream! {
+                yield ChatStreamEvent::ReasoningContent("assistant".to_owned());
                 yield ChatStreamEvent::Content("assistant".to_owned());
                 yield ChatStreamEvent::ToolCallDelta {
                     index: 0,

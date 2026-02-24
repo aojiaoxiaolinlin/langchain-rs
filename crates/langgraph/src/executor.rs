@@ -69,6 +69,7 @@ impl<'g, I, O, E: std::error::Error, Ev: Debug> Executor<'g, I, O, E, Ev> {
 #[cfg(test)]
 mod test {
     use std::collections::HashMap;
+    use std::convert::Infallible;
 
     use async_trait::async_trait;
 
@@ -76,7 +77,7 @@ mod test {
         executor::Executor,
         graph::Graph,
         label::GraphLabel,
-        node::{EventSink, Node, NodeContext, NodeError},
+        node::{EventSink, Node, NodeContext},
     };
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, GraphLabel)]
@@ -89,8 +90,8 @@ mod test {
     struct IncNode;
 
     #[async_trait]
-    impl Node<i32, i32, NodeError, ()> for IncNode {
-        async fn run_sync(&self, input: &i32, _context: NodeContext<'_>) -> Result<i32, NodeError> {
+    impl Node<i32, i32, Infallible, ()> for IncNode {
+        async fn run_sync(&self, input: &i32, _context: NodeContext<'_>) -> Result<i32, Infallible> {
             Ok(*input + 1)
         }
 
@@ -99,14 +100,14 @@ mod test {
             input: &i32,
             _sink: &dyn EventSink<()>,
             _context: NodeContext<'_>,
-        ) -> Result<i32, NodeError> {
+        ) -> Result<i32, Infallible> {
             Ok(*input + 1)
         }
     }
 
     #[tokio::test]
     async fn executor_drives_linear_flow() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 
@@ -131,7 +132,7 @@ mod test {
 
     #[tokio::test]
     async fn run_until_stuck_executes_multiple_steps() {
-        let mut graph: Graph<i32, i32, NodeError, ()> = Graph {
+        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
         };
 

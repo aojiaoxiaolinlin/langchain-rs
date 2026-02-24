@@ -13,7 +13,7 @@ pub mod state;
 pub mod store;
 
 pub use error::{
-    ErrorCategory, GraphError, LangChainError, ModelError, RetryConfig, StorageError, ToolError,
+    ErrorCategory, GraphError, LangChainError, ModelError, RetryConfig, ToolError,
     ValidationError, retry_with_backoff,
 };
 pub use parsers::{

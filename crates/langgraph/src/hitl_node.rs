@@ -119,6 +119,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
                 // 确认操作，添加系统消息
                 delta.push_message_owned(Message::Assistant {
                     content: "操作已确认".to_owned(),
+                    reasoning_content: None,
                     tool_calls: None,
                     name: None,
                 });
@@ -134,6 +135,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
                 // 审核通过
                 delta.push_message_owned(Message::Assistant {
                     content: "审核已通过".to_owned(),
+                    reasoning_content: None,
                     tool_calls: None,
                     name: None,
                 });
@@ -142,6 +144,7 @@ impl Node<MessagesState, MessagesState, InterruptError, ()> for HumanInTheLoopNo
                 // 审核拒绝
                 delta.push_message_owned(Message::Assistant {
                     content: format!("审核已拒绝: {}", reason),
+                    reasoning_content: None,
                     tool_calls: None,
                     name: None,
                 });
