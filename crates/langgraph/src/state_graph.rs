@@ -30,6 +30,7 @@ pub trait GraphSpec {
 
 /// StateGraph uses GraphSpec to define types
 pub struct StateGraph<Spec: GraphSpec> {
+    #[allow(clippy::type_complexity)]
     pub graph: Graph<Spec::State, Spec::State, Spec::Update, Spec::Error, Spec::Event>,
     pub reducer: Reducer<Spec::State, Spec::Update>,
     pub entry: InternedGraphLabel,
