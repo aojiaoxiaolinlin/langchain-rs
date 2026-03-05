@@ -3,7 +3,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use crate::request::{ToolFunction, ToolSpec};
+use crate::request::ToolFunction;
 
 pub type ToolFuture<E> = Pin<Box<dyn Future<Output = Result<Value, E>> + Send>>;
 
@@ -11,7 +11,7 @@ pub type ToolFn<E> = dyn Fn(Value) -> ToolFuture<E> + Send + Sync;
 
 pub struct RegisteredTool<E> {
     pub function: ToolFunction,
-    pub handler: Box<ToolFn<E>>,
+    pub handler: Arc<ToolFn<E>>,
 }
 
 impl<E> RegisteredTool<E> {
@@ -19,7 +19,7 @@ impl<E> RegisteredTool<E> {
         name: String,
         description: String,
         parameters: Value,
-        handler: Box<ToolFn<E>>,
+        handler: Arc<ToolFn<E>>,
     ) -> Self {
         let function = ToolFunction {
             name,
@@ -27,32 +27,6 @@ impl<E> RegisteredTool<E> {
             parameters,
         };
         Self { function, handler }
-    }
-
-    pub fn spec(&self) -> ToolSpec {
-        ToolSpec::Function {
-            function: self.function.clone(),
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.function.name
-    }
-
-    pub fn map_err<E2, F>(self, f: F) -> RegisteredTool<E2>
-    where
-        E: Send + Sync + 'static,
-        E2: Send + Sync + 'static,
-        F: Fn(E) -> E2 + Send + Sync + 'static,
-    {
-        let RegisteredTool { function, handler } = self;
-        let f = Arc::new(f);
-        let handler: Box<ToolFn<E2>> = Box::new(move |value: Value| {
-            let fut = (handler)(value);
-            let f = f.clone();
-            Box::pin(async move { fut.await.map_err(|e| (f)(e)) })
-        });
-        RegisteredTool { function, handler }
     }
 }
 
@@ -182,7 +156,7 @@ where
             map.remove("title");
         }
         let f = Arc::new(f);
-        let handler: Box<ToolFn<E>> = Box::new(move |value: Value| {
+        let handler: Arc<ToolFn<E>> = Arc::new(move |value: Value| {
             let f = f.clone();
             Box::pin(async move {
                 let args: Args = serde_json::from_value(value).map_err(E::from)?;

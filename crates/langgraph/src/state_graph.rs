@@ -12,9 +12,9 @@ use futures::future::join_all;
 use langchain_core::store::BaseStore;
 use serde::{Serialize, de::DeserializeOwned};
 use smallvec::{SmallVec, smallvec};
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::{collections::HashMap, marker::PhantomData};
 
 /// Reducer 函数类型：接收当前状态的可变引用和更新，原地修改状态
 /// (&mut Current State, Update) -> ()
@@ -22,7 +22,7 @@ pub type Reducer<S, U> = Box<dyn Fn(&mut S, U) + Send + Sync>;
 
 /// Graph Specification trait to bundle generic types
 pub trait GraphSpec {
-    type State: Send + Sync + Clone + 'static;
+    type State: Send + Sync + Clone + Default + 'static;
     type Update: Send + Sync + 'static;
     type Error: Send + Sync + Debug + 'static;
     type Event: Send + Sync + Debug + 'static;
@@ -30,7 +30,7 @@ pub trait GraphSpec {
 
 /// StateGraph uses GraphSpec to define types
 pub struct StateGraph<Spec: GraphSpec> {
-    pub graph: Graph<Spec::State, Spec::Update, Spec::Error, Spec::Event>,
+    pub graph: Graph<Spec::State, Spec::State, Spec::Update, Spec::Error, Spec::Event>,
     pub reducer: Reducer<Spec::State, Spec::Update>,
     pub entry: InternedGraphLabel,
     pub checkpointer: Option<Arc<dyn Checkpointer<Spec::State>>>,
@@ -62,6 +62,7 @@ impl<Spec: GraphSpec> StateGraph<Spec> {
         Self {
             graph: Graph {
                 nodes: HashMap::new(),
+                marker: PhantomData,
             },
             reducer: Box::new(reducer),
             entry: entry.intern(),
@@ -136,14 +137,14 @@ impl<Spec: GraphSpec> StateGraph<Spec> {
     }
 
     /// 添加条件边
-    /// 条件函数的输入是 U (Update)，根据更新内容决定下一步去哪里
+    /// 条件函数的输入是 S (State)，根据当前状态决定下一步去哪里
     pub fn add_condition_edge<F>(
         &mut self,
         pred: impl GraphLabel,
         branches: HashMap<InternedGraphLabel, InternedGraphLabel>,
         condition: F,
     ) where
-        F: Fn(&Spec::Update) -> SmallVec<[InternedGraphLabel; 2]> + Send + Sync + 'static,
+        F: Fn(&Spec::State) -> SmallVec<[InternedGraphLabel; 2]> + Send + Sync + 'static,
     {
         self.graph
             .add_node_condition_edge(pred, branches, condition);
@@ -238,9 +239,9 @@ where
             let mut all_next_nodes: SmallVec<[InternedGraphLabel; 4]> = SmallVec::new();
 
             for result in results {
-                let (update, next) = result?;
-                // Apply reducer: reducer(&mut S, U)
+                let (update, node_state) = result?;
                 (self.reducer)(&mut state, update);
+                let next = self.graph.get_next_nodes(node_state, &state);
                 all_next_nodes.extend(next);
             }
 
@@ -413,9 +414,11 @@ where
                 while let Some(event_result) = combined_stream.next().await {
                     match event_result {
                         Ok(event) => match event {
-                            GraphEvent::NodeEnd { output, next_nodes, .. } => {
+                            GraphEvent::NodeEnd {
+                                output,
+                                ..
+                            } => {
                                 updates.push(output);
-                                all_next_nodes.extend(next_nodes);
                             }
                             GraphEvent::Streaming { event, .. } => {
                                 yield event;
@@ -438,6 +441,16 @@ where
                 }
 
                 // 3. 准备下一轮
+                // 重新计算 next_nodes
+                for node in &current_nodes {
+                    if let Ok(node_state) =
+                        graph.nodes.get(node).ok_or(GraphError::<Spec::Error>::InvalidNode(*node))
+                    {
+                        let next = graph.get_next_nodes(node_state, &state);
+                        all_next_nodes.extend(next);
+                    }
+                }
+
                 all_next_nodes.sort_unstable();
                 all_next_nodes.dedup();
 

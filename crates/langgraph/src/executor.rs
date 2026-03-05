@@ -6,13 +6,13 @@ use crate::{
 };
 use std::fmt::Debug;
 
-pub struct Executor<'g, I, O, E: std::error::Error, Ev: Debug = ()> {
-    pub graph: &'g Graph<I, O, E, Ev>,
+pub struct Executor<'g, I, O, E: std::error::Error, Ev: Debug = (), S: Clone + Default = ()> {
+    pub graph: &'g Graph<S, I, O, E, Ev>,
     pub current: InternedGraphLabel,
 }
 
-impl<'g, I, O, E: std::error::Error, Ev: Debug> Executor<'g, I, O, E, Ev> {
-    pub fn new(graph: &'g Graph<I, O, E, Ev>, start: InternedGraphLabel) -> Self {
+impl<'g, S: Clone + Default, I, O, E: std::error::Error, Ev: Debug> Executor<'g, I, O, E, Ev, S> {
+    pub fn new(graph: &'g Graph<S, I, O, E, Ev>, start: InternedGraphLabel) -> Self {
         Self {
             graph,
             current: start,
@@ -29,10 +29,11 @@ impl<'g, I, O, E: std::error::Error, Ev: Debug> Executor<'g, I, O, E, Ev> {
     {
         let config = Configuration::default();
 
-        let (output, next) = self
+        let (output, node_state) = self
             .graph
             .run_once(self.current, input, NodeContext::from_config(&config))
             .await?;
+        let next = self.graph.get_next_nodes(node_state, &S::default());
         if next.len() == 1 {
             self.current = next[0];
         }
@@ -68,8 +69,8 @@ impl<'g, I, O, E: std::error::Error, Ev: Debug> Executor<'g, I, O, E, Ev> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
     use std::convert::Infallible;
+    use std::{collections::HashMap, marker::PhantomData};
 
     use async_trait::async_trait;
 
@@ -111,8 +112,9 @@ mod test {
 
     #[tokio::test]
     async fn executor_drives_linear_flow() {
-        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
+        let mut graph: Graph<(), i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
+            marker: PhantomData,
         };
 
         graph.add_node(TestLabel::A, IncNode);
@@ -136,8 +138,9 @@ mod test {
 
     #[tokio::test]
     async fn run_until_stuck_executes_multiple_steps() {
-        let mut graph: Graph<i32, i32, Infallible, ()> = Graph {
+        let mut graph: Graph<(), i32, i32, Infallible, ()> = Graph {
             nodes: HashMap::new(),
+            marker: PhantomData,
         };
 
         graph.add_node(TestLabel::A, IncNode);

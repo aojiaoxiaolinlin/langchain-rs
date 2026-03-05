@@ -26,8 +26,8 @@ use smallvec::{SmallVec, smallvec};
 use thiserror::Error;
 use tracing::debug;
 
-pub use node::llm::LlmNode;
-pub use node::tool::ToolNode;
+use node::llm::LlmNode;
+pub use node::tool::{ToolMiddleware, ToolNode};
 
 use crate::node::middleware::{AgentHook, AgentMiddleware, AgentMiddlewareNode};
 
@@ -78,6 +78,7 @@ pub struct ReactAgentBuilder<M> {
     store: Option<Arc<dyn BaseStore>>,
     checkpointer: Option<Arc<dyn Checkpointer<MessagesState>>>,
     middlewares: SmallVec<[AgentMiddleware<MessagesState>; 4]>,
+    tool_middleware: Option<Arc<ToolMiddleware<ToolError>>>,
 }
 
 impl<M> ReactAgentBuilder<M>
@@ -92,7 +93,13 @@ where
             store: None,
             checkpointer: None,
             middlewares: SmallVec::new(),
+            tool_middleware: None,
         }
+    }
+
+    pub fn with_tool_middleware(mut self, middleware: Arc<ToolMiddleware<ToolError>>) -> Self {
+        self.tool_middleware = Some(middleware);
+        self
     }
 
     pub fn with_system_prompt<Str: Into<String>>(mut self, system_prompt: Str) -> Self {
@@ -208,7 +215,10 @@ where
             },
         );
         graph.add_node(ReactAgentLabel::Llm, LlmNode::new(self.model, tool_specs));
-        graph.add_node(ReactAgentLabel::Tool, ToolNode::new(tools));
+
+        let mut tool_node = ToolNode::new(tools);
+        tool_node.middleware = self.tool_middleware;
+        graph.add_node(ReactAgentLabel::Tool, tool_node);
 
         let after_agent_entry = apply_middleware_chain(
             &mut graph,
@@ -531,12 +541,12 @@ impl ReactAgent {
     }
 }
 
-fn parse_tool<E>(tools: Vec<RegisteredTool<E>>) -> (Vec<ToolSpec>, HashMap<String, Box<ToolFn<E>>>)
+fn parse_tool<E>(tools: Vec<RegisteredTool<E>>) -> (Vec<ToolSpec>, HashMap<String, Arc<ToolFn<E>>>)
 where
     E: Error + Send + Sync + 'static,
 {
     let mut tool_specs = Vec::new();
-    let tools: HashMap<String, Box<ToolFn<E>>> = tools
+    let tools: HashMap<String, Arc<ToolFn<E>>> = tools
         .into_iter()
         .map(|t| {
             let spec = ToolSpec::Function {

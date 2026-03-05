@@ -6,7 +6,7 @@ use crate::label::InternedGraphLabel;
 ///
 /// * `Ev` - 事件类型
 #[derive(Debug, Clone)]
-pub enum GraphEvent<Ev, O> {
+pub enum GraphEvent<Ev, O, NS> {
     /// 节点开始执行
     NodeStart {
         /// 节点标签
@@ -18,8 +18,8 @@ pub enum GraphEvent<Ev, O> {
         label: InternedGraphLabel,
         /// 节点输出
         output: O,
-        /// 下一个节点标签
-        next_nodes: Vec<InternedGraphLabel>,
+        /// 当前节点状态
+        node_state: NS,
     },
     /// 流式事件（如 LLM token）
     Streaming {
@@ -40,22 +40,18 @@ pub enum GraphEvent<Ev, O> {
     },
 }
 
-impl<Ev, O> GraphEvent<Ev, O> {
+impl<Ev, O, NS> GraphEvent<Ev, O, NS> {
     /// 创建节点开始事件
     pub fn node_start(label: InternedGraphLabel) -> Self {
         Self::NodeStart { label }
     }
 
     /// 创建节点结束事件
-    pub fn node_end(
-        label: InternedGraphLabel,
-        output: O,
-        next_nodes: Vec<InternedGraphLabel>,
-    ) -> Self {
+    pub fn node_end(label: InternedGraphLabel, output: O, node_state: NS) -> Self {
         Self::NodeEnd {
             label,
             output,
-            next_nodes,
+            node_state,
         }
     }
 
