@@ -469,8 +469,8 @@ mod tests {
         branches.insert(TestBranch::Default.intern(), TestLabel::B.intern());
 
         graph
-            .try_add_node_condition_edge(TestLabel::A, branches.clone(), |output: &i32| {
-                if *output > 0 {
+            .try_add_node_condition_edge(TestLabel::A, branches.clone(), |state: &i32| {
+                if *state > 0 {
                     smallvec::smallvec![TestBranch::Default.intern()]
                 } else {
                     smallvec::smallvec![]
@@ -493,7 +493,7 @@ mod tests {
                 let target_node = branches.get(&branch_key).unwrap();
                 assert!(next_nodes.contains(&(branch_key, *target_node)));
 
-                let result = (condition)(&0);
+                let result = (condition)(&1);
                 let small_vec: SmallVec<[InternedGraphLabel; 2]> =
                     smallvec::smallvec![TestBranch::Default.intern()];
                 assert_eq!(result, small_vec);
